@@ -225,6 +225,20 @@ def scrape_goodreads_type1(parsed, metadata, log):
         except Exception as e:
             log.info(f"No volume number scraped, leaving blank ({metadata['input_folder']}) | {e}")
 
+    # --- Genres ---
+    try:
+        genres_list = []
+        genres_container = parsed.select_one('div[data-testid="genresList"]')
+        if genres_container:
+            genre_buttons = genres_container.select('a.Button--tag span.Button__labelItem')
+            for button in genre_buttons:
+                genre_text = button.getText(strip=True)
+                if genre_text and genre_text != "Genres":  # Skip the "Genres" label
+                    genres_list.append(genre_text)
+            metadata['genres'] = ','.join(genres_list)
+    except Exception as e:
+        log.info(f"No genres scraped, leaving blank ({metadata['input_folder']}) | {e}")
+
     return metadata
 
 
@@ -294,5 +308,19 @@ def scrape_goodreads_type2(parsed, metadata, log):
                 metadata['volumenumber'] = volume_number
         except Exception as e:
             log.info(f"No volume number scraped, leaving blank ({metadata['input_folder']}) | {e}")
+
+    # --- Genres ---
+    try:
+        genres_list = []
+        genres_container = parsed.select_one('div[data-testid="genresList"]')
+        if genres_container:
+            genre_buttons = genres_container.select('a.Button--tag span.Button__labelItem')
+            for button in genre_buttons:
+                genre_text = button.getText(strip=True)
+                if genre_text and genre_text != "Genres":  # Skip the "Genres" label
+                    genres_list.append(genre_text)
+            metadata['genres'] = ','.join(genres_list)
+    except Exception as e:
+        log.info(f"No genres scraped, leaving blank ({metadata['input_folder']}) | {e}")
 
     return metadata

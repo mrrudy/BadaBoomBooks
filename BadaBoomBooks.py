@@ -254,6 +254,7 @@ for key, value in config.items('urls'):
         'series': '',
         'sereis_multi': '',
         'volumenumber': '',
+        'genres': '',
         'url': url,
         'skip': False,
         'failed': False,

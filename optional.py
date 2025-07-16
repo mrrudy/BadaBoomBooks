@@ -37,7 +37,21 @@ def create_opf(metadata, opf_template):
     template = re.sub(r"__PUBLISHYEAR__", metadata['publishyear'], template)
 
     # - Genres -
-    template = re.sub(r"__GENRES__", metadata['genres'], template)
+    # Handle both string (old format) and list (new format)
+    if isinstance(metadata['genres'], list):
+        genre_list = metadata['genres']
+    else:
+        # Convert comma-separated string to list
+        genre_list = [g.strip() for g in metadata['genres'].split(',')] if metadata['genres'] else []
+    
+    # Create XML structure for genres
+    genre_xml = ""
+    for genre in genre_list:
+        genre_xml += f"<dc:subject>{genre}</dc:subject>\n    "
+    # Remove trailing newline and spaces
+    genre_xml = genre_xml.rstrip()
+    
+    template = re.sub(r"__GENRES__", genre_xml, template)
 
     # - ISBN -
     template = re.sub(r"__ISBN__", metadata['isbn'], template)
