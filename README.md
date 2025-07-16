@@ -74,7 +74,8 @@ optional arguments:
   -i, --infotxt  Generate 'info.txt' file, used by SmartAudioBookPlayer to display book summary
   -o, --opf      Generate 'metadata.opf' file, used by Audiobookshelf to import metadata
   -r, --rename   Rename audio tracks to '## - {title}' format
-  -s , --site    Specify the site to perform initial searches [audible, goodreads, both]
+  -s, --site     Specify the site to perform initial searches [audible, goodreads, both]
+  -S, --series   Include series information in output path (series/volume - title)
   -v, --version  show program's version number and exit
 
 Cheers to the community for providing our content and building our tools!

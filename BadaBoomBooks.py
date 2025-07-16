@@ -82,6 +82,7 @@ parser.add_argument('-r', '--rename', action='store_true', help="Rename audio tr
 parser.add_argument('-s', '--site', metavar='',  default='both', choices=['audible', 'goodreads', 'both'], help="Specify the site to perform initial searches [audible, goodreads, both]")
 parser.add_argument('-v', '--version', action='version', version=f"Version {__version__}")
 parser.add_argument('folders', metavar='folder', nargs='+', help='Audiobook folder(s) to be organized')
+parser.add_argument('-S', '--series', action='store_true', help="Include series information in output path (series/volume - title)")
 
 args = parser.parse_args()
 
@@ -313,10 +314,24 @@ URL: {metadata['url']}""")
     author_clean = re.sub(r"[^\w\-\.\(\) ]+", '', metadata['author'])
     title_clean = re.sub(r"[^\w\-\.\(\) ]+", '', metadata['title'])
     log.info(f"Cleaned path names: Author ({author_clean} | Title ({title_clean}")
+
+    # Clean series and volume data if they exist
+    series_clean = re.sub(r"[^\w\-\.\(\) ]+", '', metadata['series']) if metadata['series'] else ""
+    volumenumber_clean = re.sub(r"[^\w\-\.\(\) ]+", '', metadata['volumenumber']) if metadata['volumenumber'] else ""
+
+    # Prepare output path
+
     author_folder = output_path / f"{author_clean}/"
     author_folder.resolve()
     author_folder.mkdir(parents=True, exist_ok=True)
-    final_output = author_folder / f"{title_clean}/"
+    # Apply series-based structure if requested and series data exists
+    if args.series and series_clean and volumenumber_clean:
+        series_dir = author_folder / series_clean
+        series_dir.mkdir(parents=True, exist_ok=True)
+        final_output = series_dir / f"{volumenumber_clean} - {title_clean}/"
+    else:    
+        final_output = author_folder / f"{title_clean}/"
+
     metadata['final_output'] = final_output.resolve()
 
     print(f"\nOutput: {metadata['final_output']}")
