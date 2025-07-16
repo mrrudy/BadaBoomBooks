@@ -13,7 +13,7 @@
     <dc:creator opf:role="nrt">__NARRATOR__</dc:creator>      <!-- narrator -->
     <dc:publisher>__PUBLISHER__</dc:publisher>
     <dc:date>__PUBLISHYEAR__</dc:date>                           <!-- publish year -->
-    <dc:language>eng</dc:language>
+    <dc:language>pol</dc:language>
     <dc:subject>__GENRES__</dc:subject>                     <!-- genre -->
     <dc:identifier opf:scheme="ISBN">__ISBN__</dc:identifier>
     <dc:identifier opf:scheme="ASIN">__ASIN__</dc:identifier>
