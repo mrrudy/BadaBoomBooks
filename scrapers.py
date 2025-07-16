@@ -174,7 +174,10 @@ def scrape_goodreads_type1(parsed, metadata, log):
         element = parsed.select_one('#bookAuthors')
         log.info(f"Author element: {str(element)}")
         element = element.find('a')
-        metadata['author'] = element.getText(strip=True)
+        # Clean extracted text by collapsing multiple spaces
+        raw_text = element.getText(strip=False)  # Keep original whitespace
+        cleaned_author = ' '.join(raw_text.split())  # Collapse whitespace
+        metadata['author'] = cleaned_author
     except Exception as e:
         log.info(f"No author in bs4, using '_unknown_' ({metadata['input_folder']}) | {e}")
         print(f" - Warning: No author scraped, placing in author folder '_unknown_': {metadata['input_folder']}")
@@ -242,7 +245,9 @@ def scrape_goodreads_type2(parsed, metadata, log):
     try:
         value = data['author'][0]['name']
         log.info(f"Author element: {str(value)}")
-        metadata['author'] = value
+        # Clean extra spaces by splitting and rejoining with single spaces
+        cleaned_author = ' '.join(value.split())
+        metadata['author'] = cleaned_author
     except Exception as e:
         log.info(f"No author in bs4, using '_unknown_' ({metadata['input_folder']}) | {e}")
         print(f" - Warning: No author scraped, placing in author folder '_unknown_': {metadata['input_folder']}")
