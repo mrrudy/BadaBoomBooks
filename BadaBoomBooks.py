@@ -200,7 +200,7 @@ def clipboard_queue(folder, config, dry_run=False):
 # ==========================================================================================================
 
 # ===== Create Path() objects for each argument folder =====
-folders = [Path(argument).resolve() for argument in args.folders]
+folders = [Path(argument.rstrip(r'\/"\'')).resolve() for argument in args.folders]
 
 for folder in folders:
     # --- Verify integrity of input folders ---
