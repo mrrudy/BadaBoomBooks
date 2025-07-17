@@ -360,4 +360,24 @@ def scrape_goodreads_type2(parsed, metadata, log):
     except Exception as e:
         log.info(f"Exception while scraping language ({metadata['input_folder']}) | {e}")
 
+    # --- ISBN ---
+    try:
+        isbn = None
+        # Try JSON-LD first
+        if jsonld and "isbn" in jsonld:
+            isbn = jsonld["isbn"]
+        # Fallback to regex in HTML if not found
+        if not isbn:
+            html = str(parsed)
+            isbn_match = re.search(r'"isbn"\s*:\s*"(\d+)"', html)
+            if isbn_match:
+                isbn = isbn_match.group(1)
+        if isbn:
+            metadata['isbn'] = isbn
+            log.info(f"ISBN scraped: {isbn}")
+        else:
+            log.info(f"No ISBN found in JSON-LD or HTML for {metadata['input_folder']}")
+    except Exception as e:
+        log.info(f"Exception while scraping ISBN ({metadata['input_folder']}) | {e}")
+
     return metadata
