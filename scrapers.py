@@ -250,6 +250,17 @@ def scrape_goodreads_type2(parsed, metadata, log):
     # ----- Scrape a Goodreads.com book page for metadata -----
     log.debug(f"Scraping Goodreads Type 2 for metadata: {metadata['input_folder']}")
     try:
+        # Find the JSON-LD script block in the <head>
+        jsonld_script = parsed.find("script", {"type": "application/ld+json"})
+        if jsonld_script:
+            jsonld = json.loads(jsonld_script.get_text(strip=True))
+        else:
+            jsonld = None
+    except Exception as exc:
+        log.error(f"JSON-LD Parsing Error: {exc}")
+        jsonld = None
+
+    try:
         data = json.loads(parsed.select_one("script[type='application/ld+json']").getText(strip=True))
     except Exception as exc:
         log.error(f"JSON Parsing Error: {exc}")
@@ -263,13 +274,12 @@ def scrape_goodreads_type2(parsed, metadata, log):
     try:
         value = data['author'][0]['name']
         log.info(f"Author element: {str(value)}")
-        # Clean extra spaces by splitting and rejoining with single spaces
         cleaned_author = ' '.join(value.split())
         metadata['author'] = cleaned_author
     except Exception as e:
         log.info(f"No author in bs4, using '_unknown_' ({metadata['input_folder']}) | {e}")
         print(f" - Warning: No author scraped, placing in author folder '_unknown_': {metadata['input_folder']}")
-        metadata['author'] = '_unknown_'  # If no author is found, use the name '_unknown_'
+        metadata['author'] = '_unknown_'
 
     # --- Title ---
     try:
@@ -279,7 +289,7 @@ def scrape_goodreads_type2(parsed, metadata, log):
     except Exception as e:
         log.info(f"No title scraped, using '_unknown_' ({metadata['input_folder']}) | {e}")
         print(f" - Warning: No title scraped, using folder name: {metadata['input_folder']}")
-        metadata['title'] = metadata['input_folder']  # If no title is found, use original foldername
+        metadata['title'] = metadata['input_folder']
 
     # --- Summary ---
     try:
@@ -328,6 +338,26 @@ def scrape_goodreads_type2(parsed, metadata, log):
         log.info(f"No genres scraped, leaving blank ({metadata['input_folder']}) | {e}")
 
     # --- Language ---
-
+    try:
+        # Prefer JSON-LD "inLanguage" field if available
+        language = None
+        if jsonld and "inLanguage" in jsonld:
+            language = jsonld["inLanguage"]
+        # Fallback to previous regex if not found
+        if not language:
+            html = str(parsed)
+            lang_match = re.search(r'"language":\s*{[^}]*"name":"([^"]+)"', html)
+            if lang_match:
+                language = lang_match.group(1)
+        if language:
+            # Convert to ISO code using LANGUAGE_MAP
+            lang_key = language.strip().lower()
+            iso_code = LANGUAGE_MAP.get(lang_key, language)
+            metadata['language'] = iso_code
+            log.info(f"Language scraped: {language} -> {iso_code}")
+        else:
+            log.info(f"No language found in JSON-LD or HTML for {metadata['input_folder']}")
+    except Exception as e:
+        log.info(f"Exception while scraping language ({metadata['input_folder']}) | {e}")
 
     return metadata
