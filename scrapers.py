@@ -4,6 +4,7 @@ import time
 import re
 import requests
 from bs4 import BeautifulSoup
+from language_map import LANGUAGE_MAP
 
 
 def http_request(metadata, log, url=False, query=False):
@@ -239,6 +240,21 @@ def scrape_goodreads_type1(parsed, metadata, log):
     except Exception as e:
         log.info(f"No genres scraped, leaving blank ({metadata['input_folder']}) | {e}")
 
+    # --- Language ---
+    try:
+        # Find all DescListItem elements
+        items = parsed.find_all('div', class_='DescListItem')
+        for item in items:
+            # Check if this is the language item
+            if item.dt and item.dt.get_text(strip=True) == "Language":
+                lang_text = item.dd.get_text(strip=True)
+                # Normalize language name and map to code
+                lang_lower = lang_text.lower()
+                metadata['language'] = LANGUAGE_MAP.get(lang_lower, lang_lower[:3])
+                break
+    except Exception as e:
+        log.info(f"No language scraped, leaving blank ({metadata['input_folder']}) | {e}")
+
     return metadata
 
 
@@ -322,5 +338,20 @@ def scrape_goodreads_type2(parsed, metadata, log):
             metadata['genres'] = ','.join(genres_list)
     except Exception as e:
         log.info(f"No genres scraped, leaving blank ({metadata['input_folder']}) | {e}")
+
+    # --- Language ---
+    try:
+        # Find all DescListItem elements
+        items = parsed.find_all('div', class_='DescListItem')
+        for item in items:
+            # Check if this is the language item
+            if item.dt and item.dt.get_text(strip=True) == "Language":
+                lang_text = item.dd.get_text(strip=True)
+                # Normalize language name and map to code
+                lang_lower = lang_text.lower()
+                metadata['language'] = LANGUAGE_MAP.get(lang_lower, lang_lower[:3])
+                break
+    except Exception as e:
+        log.info(f"No language scraped, leaving blank ({metadata['input_folder']}) | {e}")
 
     return metadata

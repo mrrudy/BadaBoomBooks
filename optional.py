@@ -59,6 +59,9 @@ def create_opf(metadata, opf_template):
     # - ASIN -
     template = re.sub(r"__ASIN__", metadata['asin'], template)
 
+    # - LANGUAGE -
+    template = re.sub(r"__LANGUAGE__", metadata['language'], template)
+
     # - Series -
     template = re.sub(r"__SERIES__", metadata['series'], template)
 
