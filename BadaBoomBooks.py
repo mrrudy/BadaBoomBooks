@@ -82,8 +82,9 @@ parser.add_argument('-o', '--opf', action='store_true', help="Generate 'metadata
 parser.add_argument('-r', '--rename', action='store_true', help="Rename audio tracks to '## - {title}' format")
 parser.add_argument('-s', '--site', metavar='',  default='both', choices=['audible', 'goodreads', 'both'], help="Specify the site to perform initial searches [audible, goodreads, both]")
 parser.add_argument('-v', '--version', action='version', version=f"Version {__version__}")
-parser.add_argument('folders', metavar='folder', nargs='+', help='Audiobook folder(s) to be organized')
+parser.add_argument('folders', metavar='folder', nargs='*', help='Audiobook folder(s) to be organized')
 parser.add_argument('-S', '--series', action='store_true', help="Include series information in output path (series/volume - title)")
+parser.add_argument('-R', '--book-root', dest='book_root', metavar='BOOK_ROOT', help='Treat all first-level subdirectories of this directory as books to process')
 
 args = parser.parse_args()
 
@@ -199,16 +200,34 @@ def clipboard_queue(folder, config, dry_run=False):
 # ==========================================================================================================
 # ==========================================================================================================
 
-# ===== Create Path() objects for each argument folder =====
-folders = [Path(argument.rstrip(r'\/"\'')).resolve() for argument in args.folders]
+# ===== Build list of folders to process =====
+folders = []
+
+# Handle --book-root if provided
+if args.book_root:
+    book_root = Path(args.book_root.rstrip(r'\/"\'')).resolve()
+    if not book_root.is_dir():
+        print(f"\nThe book root path is not a directory or does not exist: {book_root}")
+        input("\nPress enter to exit...")
+        sys.exit()
+    # Add all first-level subdirectories as book folders
+    for sub in book_root.iterdir():
+        if sub.is_dir():
+            folders.append(sub.resolve())
+# Add any folders given as positional arguments
+folders += [Path(argument.rstrip(r'\/"\'')).resolve() for argument in getattr(args, 'folders', [])]
+
+# Remove duplicates, just in case
+folders = list(dict.fromkeys(folders))
 
 for folder in folders:
-    # --- Verify integrity of input folders ---
-    exists = folder.is_dir()
-    if not exists:
-        print(f"The input folder '{folder.name}' does not exist or is not a directory...")
-        input('Press enter to exit...')
-        sys.exit()
+    # Only check existence for positional folders if --book-root is not set
+    if not args.book_root:
+        exists = folder.is_dir()
+        if not exists:
+            print(f"The input folder '{folder.name}' does not exist or is not a directory...")
+            input('Press enter to exit...')
+            sys.exit()
 
 log.debug(folders)
 
