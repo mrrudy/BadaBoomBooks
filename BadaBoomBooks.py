@@ -75,6 +75,7 @@ Cheers to the community for providing our content and building our tools!
 parser.add_argument('-O', dest='output', metavar='OUTPUT', help='Path to place organized folders')
 parser.add_argument('-c', '--copy', action='store_true', help='Copy folders instead of renaming them')
 parser.add_argument('-d', '--debug', action='store_true', help='Enable debugging to log file')
+parser.add_argument('-D', '--dry-run', action='store_true', help="Perform a trial run without making any changes to filesystem")
 parser.add_argument('-f', '--flatten', action='store_true', help="Flatten book folders, useful if the player has issues with multi-folder books")
 parser.add_argument('-i', '--infotxt', action='store_true', help="Generate 'info.txt' file, used by SmartAudioBookPlayer to display book summary")
 parser.add_argument('-o', '--opf', action='store_true', help="Generate 'metadata.opf' file, used by Audiobookshelf to import metadata")
@@ -100,7 +101,7 @@ if not args.debug:
     log.disable(log.CRITICAL)
 
 
-def clipboard_queue(folder, config):
+def clipboard_queue(folder, config, dry_run=False):
     # ----- Search for audibooks then monitor clipboard for URL -----
 
     book_path = folder.resolve()
@@ -141,7 +142,7 @@ def clipboard_queue(folder, config):
         webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=audible.com goodreads.com {search_term}", new=2)
 
     clipboard_old = pyperclip.paste()
-    log.debug(f"clipboard_old: {clipboard_old}")
+#    log.debug(f"clipboard_old: {clipboard_old}")
 
     if (re.search(r"http.+goodreads.+book/show/\d+", clipboard_old)) or (re.search(r"http.+audible.+/pd/[\w-]+Audiobook/\w+\??", clipboard_old)) or (re.search(r"skip", clipboard_old)):  # Remove old script contents from clipboard
         clipboard_old = '__clipboard_cleared__'
@@ -215,7 +216,7 @@ log.debug(folders)
 # ===== Build the queue using the .ini =====
 for folder in folders:
     folder = folder.resolve()
-    config = clipboard_queue(folder, config)
+    config = clipboard_queue(folder, config, dry_run=args.dry_run)
     print('\n-------------------------------------------')
 
 print('\n===================================== PROCESSING ====================================')
@@ -339,36 +340,54 @@ URL: {metadata['url']}""")
 
     # ----- [--copy] Copy/move book folder ---
     if args.copy:
-        print("\nCopying...")
-        shutil.copytree(folder, metadata['final_output'], dirs_exist_ok=True, copy_function=shutil.copy2)
-    else:  # - Move folder (defult) -
-        print("\nMoving...")
-        try:
-            folder.rename(metadata['final_output'])
-        except Exception as e:
-            log.info(f"Couldn't move folder directly, performing copy-move (metadata['title']) | {e}")
+        if args.dry_run:
+            print(f"\n[DRY-RUN] Would copy '{folder}' to '{metadata['final_output']}'")
+        else:
+            print("\nCopying...")
             shutil.copytree(folder, metadata['final_output'], dirs_exist_ok=True, copy_function=shutil.copy2)
-            shutil.rmtree(folder)
+    else:  # - Move folder (default) -
+        if args.dry_run:
+            print(f"\n[DRY-RUN] Would move '{folder}' to '{metadata['final_output']}'")
+        else:
+            print("\nMoving...")
+            try:
+                folder.rename(metadata['final_output'])
+            except Exception as e:
+                log.info(f"Couldn't move folder directly, performing copy-move (metadata['title']) | {e}")
+                shutil.copytree(folder, metadata['final_output'], dirs_exist_ok=True, copy_function=shutil.copy2)
+                shutil.rmtree(folder)
 
     # ----- [--flatten] Flatten Book Folders -----
     if args.flatten:
-        print('\nFlattening...')
-        flatten_folder(metadata, log)
+        if args.dry_run:
+            print(f"\n[DRY-RUN] Would flatten '{metadata['final_output']}'")
+        else:
+            print('\nFlattening...')
+            flatten_folder(metadata, log, dry_run=args.dry_run)
 
     # ----- [--rename] Rename audio tracks -----
     if args.rename:
-        print('\nRenaming...')
-        rename_tracks(metadata, log)
+        if args.dry_run:
+            print(f"\n[DRY-RUN] Would rename audio tracks in '{metadata['final_output']}'")
+        else:
+            print('\nRenaming...')
+            rename_tracks(metadata, log, dry_run=args.dry_run)
 
     # ----- [--opf] Create .opf file -----
     if args.opf:
-        print("\nCreating 'metadata.opf'")
-        create_opf(metadata, opf_template)
+        if args.dry_run:
+            print(f"\n[DRY-RUN] Would create 'metadata.opf' in '{metadata['final_output']}'")
+        else:
+            print("\nCreating 'metadata.opf'")
+            create_opf(metadata, opf_template, dry_run=args.dry_run)
 
     # ----- [--i] Create info.txt file -----
     if args.infotxt:
-        print("\nCreating 'info.txt'")
-        create_info(metadata)
+        if args.dry_run:
+            print(f"\n[DRY-RUN] Would create 'info.txt' in '{metadata['final_output']}'")
+        else:
+            print("\nCreating 'info.txt'")
+            create_info(metadata, dry_run=args.dry_run)
 
     # ---- Folder complete ----
     print("\nDone!")

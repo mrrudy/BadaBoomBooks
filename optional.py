@@ -3,7 +3,11 @@ import re
 import shutil
 
 
-def create_opf(metadata, opf_template):
+def create_opf(metadata, opf_template, dry_run=False):
+    if dry_run:
+        print(f"[DRY-RUN] Would create OPF file in: {metadata['final_output']}")
+        return
+
     # --- Generate .opf Metadata file ---
 
     with opf_template.open('r') as file:
@@ -75,14 +79,21 @@ def create_opf(metadata, opf_template):
     return
 
 
-def create_info(metadata):
+def create_info(metadata, dry_run=False):
+    if dry_run:
+        print(f"[DRY-RUN] Would create info.txt in: {metadata['final_output']}")
+        return
+
     # --- Generate info.txt summary file ---
     txt_file = metadata['final_output'] / 'info.txt'
     with txt_file.open('w', encoding='utf-8') as file:
         file.write(metadata['summary'])
 
 
-def flatten_folder(metadata, log):
+def flatten_folder(metadata, log, dry_run=False):
+    if dry_run:
+        print(f"[DRY-RUN] Would flatten folder: {metadata['final_output']}")
+        return
     # --- Flatten folder and rename audio files to avoid conflicts ---
 
     # - Get all audio files -
@@ -118,7 +129,10 @@ def flatten_folder(metadata, log):
     return
 
 
-def rename_tracks(metadata, log):
+def rename_tracks(metadata, log, dry_run=False):
+    if dry_run:
+        print(f"[DRY-RUN] Would rename tracks in: {metadata['final_output']}")
+        return
     # --- Rename audio tracks to '## - {title}' format ---
 
     # - Get all audio files -
