@@ -1,6 +1,7 @@
 # --- Optional functions specified by flags ---
 import re
 import shutil
+import html
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, TCON, TDRC, COMM
 
@@ -11,68 +12,61 @@ def create_opf(metadata, opf_template, dry_run=False):
         return
 
     # --- Generate .opf Metadata file ---
-
     with opf_template.open('r') as file:
         template = file.read()
 
+    # Helper to escape XML special characters
+    def xml_escape(s):
+        return html.escape(s if s is not None else '', quote=True)
+
     # - Author -
-    if metadata['author'] == '__unknown__':
-        template = re.sub(r"__AUTHOR__", '', template)
-    else:
-        template = re.sub(r"__AUTHOR__", metadata['author'], template)
+    author = xml_escape(metadata['author'])
+    template = re.sub(r"__AUTHOR__", '' if author == '__unknown__' else author, template)
 
     # - Title -
-    if metadata['title'] == metadata['input_folder']:
-        template = re.sub(r"__TITLE__", '', template)
-    else:
-        template = re.sub(r"__TITLE__", metadata['title'], template)
+    title = xml_escape(metadata['title'])
+    template = re.sub(r"__TITLE__", '' if metadata['title'] == metadata['input_folder'] else title, template)
 
     # - Summary -
-    template = re.sub(r"__SUMMARY__", metadata['summary'], template)
+    template = re.sub(r"__SUMMARY__", xml_escape(metadata['summary']), template)
 
     # - Subtitle -
-    template = re.sub(r"__SUBTITLE__", metadata['subtitle'], template)
+    template = re.sub(r"__SUBTITLE__", xml_escape(metadata['subtitle']), template)
 
     # - Narrator -
-    template = re.sub(r"__NARRATOR__", metadata['narrator'], template)
+    template = re.sub(r"__NARRATOR__", xml_escape(metadata['narrator']), template)
 
     # - Publisher -
-    template = re.sub(r"__PUBLISHER__", metadata['publisher'], template)
+    template = re.sub(r"__PUBLISHER__", xml_escape(metadata['publisher']), template)
 
     # - Publish Year -
-    template = re.sub(r"__PUBLISHYEAR__", metadata['publishyear'], template)
+    template = re.sub(r"__PUBLISHYEAR__", xml_escape(metadata['publishyear']), template)
 
     # - Genres -
-    # Handle both string (old format) and list (new format)
     if isinstance(metadata['genres'], list):
         genre_list = metadata['genres']
     else:
-        # Convert comma-separated string to list
         genre_list = [g.strip() for g in metadata['genres'].split(',')] if metadata['genres'] else []
-    
-    # Create XML structure for genres
     genre_xml = ""
     for genre in genre_list:
-        genre_xml += f"<dc:subject>{genre}</dc:subject>\n    "
-    # Remove trailing newline and spaces
+        genre_xml += f"<dc:subject>{xml_escape(genre)}</dc:subject>\n    "
     genre_xml = genre_xml.rstrip()
-    
     template = re.sub(r"__GENRES__", genre_xml, template)
 
     # - ISBN -
-    template = re.sub(r"__ISBN__", metadata['isbn'], template)
+    template = re.sub(r"__ISBN__", xml_escape(metadata['isbn']), template)
 
     # - ASIN -
-    template = re.sub(r"__ASIN__", metadata['asin'], template)
+    template = re.sub(r"__ASIN__", xml_escape(metadata['asin']), template)
 
     # - LANGUAGE -
-    template = re.sub(r"__LANGUAGE__", metadata['language'], template)
+    template = re.sub(r"__LANGUAGE__", xml_escape(metadata['language']), template)
 
     # - Series -
-    template = re.sub(r"__SERIES__", metadata['series'], template)
+    template = re.sub(r"__SERIES__", xml_escape(metadata['series']), template)
 
     # - Volume Number -
-    template = re.sub(r"__VOLUMENUMBER__", metadata['volumenumber'], template)
+    template = re.sub(r"__VOLUMENUMBER__", xml_escape(metadata['volumenumber']), template)
 
     opf_output = metadata['final_output'] / 'metadata.opf'
     with opf_output.open('w', encoding='utf-8') as file:
