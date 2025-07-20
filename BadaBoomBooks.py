@@ -10,6 +10,7 @@ import shutil
 import sys
 import time
 import webbrowser
+import xml.etree.ElementTree as ET
 
 root_path = Path(sys.argv[0]).resolve().parent
 sys.path.append(str(root_path))
@@ -86,6 +87,7 @@ parser.add_argument('folders', metavar='folder', nargs='*', help='Audiobook fold
 parser.add_argument('-S', '--series', action='store_true', help="Include series information in output path (series/volume - title)")
 parser.add_argument('-R', '--book-root', dest='book_root', metavar='BOOK_ROOT', help='Treat all first-level subdirectories of this directory as books to process')
 parser.add_argument('-I', '--id3-tag', action='store_true', help='Update ID3 tags of audio files using scraped metadata')
+parser.add_argument('-F', '--from-opf', action='store_true', help='Read metadata from metadata.opf file if present, fallback to web scraping if not')
 
 args = parser.parse_args()
 
@@ -198,6 +200,46 @@ def clipboard_queue(folder, config, dry_run=False):
     return config
 
 
+def read_opf_metadata(opf_path):
+    metadata = {
+        'author': '',
+        'authors_multi': '',
+        'title': '',
+        'summary': '',
+        'subtitle': '',
+        'narrator': '',
+        'publisher': '',
+        'publishyear': '',
+        'genres': '',
+        'isbn': '',
+        'asin': '',
+        'series': '',
+        'sereis_multi': '',
+        'volumenumber': '',
+        'language': '',
+        'input_folder': str(opf_path.parent.name),
+        'failed': False,  # Always set this key
+        'failed_exception': '',
+        'skip': False,    # Always set this key
+        'url': ''         # Always set this key
+    }
+    try:
+        tree = ET.parse(opf_path)
+        root = tree.getroot()
+        ns = {'dc': 'http://purl.org/dc/elements/1.1/'}
+        metadata['title'] = root.find('.//dc:title', ns).text if root.find('.//dc:title', ns) is not None else ''
+        metadata['author'] = root.find('.//dc:creator', ns).text if root.find('.//dc:creator', ns) is not None else ''
+        metadata['summary'] = root.find('.//dc:description', ns).text if root.find('.//dc:description', ns) is not None else ''
+        metadata['language'] = root.find('.//dc:language', ns).text if root.find('.//dc:language', ns) is not None else ''
+        metadata['isbn'] = root.find('.//dc:identifier', ns).text if root.find('.//dc:identifier', ns) is not None else ''
+        # Add more fields as needed
+        genre_elements = root.findall('.//dc:subject', ns)
+        metadata['genres'] = ','.join([g.text for g in genre_elements if g.text]) if genre_elements else ''
+    except Exception as e:
+        metadata['failed'] = True
+        metadata['failed_exception'] = f"OPF parsing error: {e}"
+    return metadata
+
 # ==========================================================================================================
 # ==========================================================================================================
 
@@ -236,14 +278,21 @@ log.debug(folders)
 # ===== Build the queue using the .ini =====
 for folder in folders:
     folder = folder.resolve()
-    config = clipboard_queue(folder, config, dry_run=args.dry_run)
-    print('\n-------------------------------------------')
+    opf_file = folder / 'metadata.opf'
+    if args.from_opf and opf_file.exists():
+        # Write OPF marker instead of URL
+        b64_folder = base64.standard_b64encode(bytes(str(folder), 'utf-8')).decode()
+        b64_url = base64.standard_b64encode(b'OPF').decode()
+        config['urls'][b64_folder] = b64_url
+        print(f"Queued OPF metadata for {folder}")
+    else:
+        config = clipboard_queue(folder, config, dry_run=args.dry_run)
+        print('\n-------------------------------------------')
 
 print('\n===================================== PROCESSING ====================================')
 
 with config_file.open('w', encoding='utf-8') as file:
     config.write(file)
-
 
 # ===== Process all keys (folders) in .ini file =====
 config.read(config_file, encoding='utf-8')
@@ -259,7 +308,6 @@ for key, value in config.items('urls'):
 
     # ----- Scrape metadata -----
     folder = Path(folder).resolve()
-
     metadata = {
         'author': '',
         'authors_multi': '',
@@ -285,36 +333,44 @@ for key, value in config.items('urls'):
 
     print(f"\n----- {metadata['input_folder']} -----")
 
-    # --- Request Metadata ---
-    while True:
+    if url == "OPF":
+        opf_file = folder / 'metadata.opf'
+        metadata = read_opf_metadata(opf_file)
+        if metadata.get('failed'):
+            print(f"Failed to read OPF metadata: {metadata.get('failed_exception')}")
+            continue
+        print(f"Read metadata from OPF for {metadata['input_folder']}")
+    else:
+        # --- Request Metadata ---
+        while True:
 
-        if 'audible.com' in metadata['url']:
-            # --- ASIN ---
-            metadata['asin'] = re.search(r"^http.+audible.+/pd/[\w-]+Audiobook/(\w{10})", metadata['url'])[1]
-            query = {'response_groups': 'contributors,product_desc,series,product_extended_attrs,media'}
-            metadata, response = http_request(metadata, log, f"https://api.audible.com/1.0/catalog/products/{metadata['asin']}", query)
-            if metadata['skip'] is True:
+            if 'audible.com' in metadata['url']:
+                # --- ASIN ---
+                metadata['asin'] = re.search(r"^http.+audible.+/pd/[\w-]+Audiobook/(\w{10})", metadata['url'])[1]
+                query = {'response_groups': 'contributors,product_desc,series,product_extended_attrs,media'}
+                metadata, response = http_request(metadata, log, f"https://api.audible.com/1.0/catalog/products/{metadata['asin']}", query)
+                if metadata['skip'] is True:
+                    break
+                page = response.json()['product']
+                metadata = api_audible(metadata, page, log)
                 break
-            page = response.json()['product']
-            metadata = api_audible(metadata, page, log)
-            break
 
-        elif 'goodreads.com' in metadata['url']:
-            metadata, response = http_request(metadata, log)
+            elif 'goodreads.com' in metadata['url']:
+                metadata, response = http_request(metadata, log)
 
-            if args.debug:
-                with Path(root_path / 'goodreads_page.html').open('w', encoding='utf-8') as html_page:
-                    html_page.write(response.text)
+                if args.debug:
+                    with Path(root_path / 'goodreads_page.html').open('w', encoding='utf-8') as html_page:
+                        html_page.write(response.text)
 
-            if metadata['skip'] is True:
-                break
-            parsed = BeautifulSoup(response.text, 'html.parser')
-            if parsed.select_one('#bookTitle') is not None:
-                metadata = scrape_goodreads_type1(parsed, metadata, log)
-                break
-            elif parsed.select_one("script[type='application/ld+json']") is not None:
-                metadata = scrape_goodreads_type2(parsed, metadata, log)
-                break
+                if metadata['skip'] is True:
+                    break
+                parsed = BeautifulSoup(response.text, 'html.parser')
+                if parsed.select_one('#bookTitle') is not None:
+                    metadata = scrape_goodreads_type1(parsed, metadata, log)
+                    break
+                elif parsed.select_one("script[type='application/ld+json']") is not None:
+                    metadata = scrape_goodreads_type2(parsed, metadata, log)
+                    break
 
     if metadata['failed'] is True:
         failed_books.append(f"{metadata['input_folder']} ({metadata['failed_exception']})")
