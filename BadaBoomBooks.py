@@ -14,7 +14,7 @@ import webbrowser
 root_path = Path(sys.argv[0]).resolve().parent
 sys.path.append(str(root_path))
 from scrapers import http_request, api_audible, scrape_goodreads_type1, scrape_goodreads_type2
-from optional import create_opf, create_info, flatten_folder, rename_tracks
+from optional import create_opf, create_info, flatten_folder, rename_tracks, update_id3_tags
 
 from bs4 import BeautifulSoup
 from tinytag import TinyTag
@@ -85,6 +85,7 @@ parser.add_argument('-v', '--version', action='version', version=f"Version {__ve
 parser.add_argument('folders', metavar='folder', nargs='*', help='Audiobook folder(s) to be organized')
 parser.add_argument('-S', '--series', action='store_true', help="Include series information in output path (series/volume - title)")
 parser.add_argument('-R', '--book-root', dest='book_root', metavar='BOOK_ROOT', help='Treat all first-level subdirectories of this directory as books to process')
+parser.add_argument('-I', '--id3-tag', action='store_true', help='Update ID3 tags of audio files using scraped metadata')
 
 args = parser.parse_args()
 
@@ -407,6 +408,10 @@ URL: {metadata['url']}""")
         else:
             print("\nCreating 'info.txt'")
             create_info(metadata, dry_run=args.dry_run)
+
+    # ----- [--id3-tag] Update ID3 tags -----
+    if args.id3_tag:
+        update_id3_tags(metadata, log, dry_run=args.dry_run)
 
     # ---- Folder complete ----
     print("\nDone!")

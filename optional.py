@@ -1,6 +1,8 @@
 # --- Optional functions specified by flags ---
 import re
 import shutil
+from mutagen.easyid3 import EasyID3
+from mutagen.id3 import ID3, TIT2, TPE1, TALB, TCON, TDRC, COMM
 
 
 def create_opf(metadata, opf_template, dry_run=False):
@@ -160,5 +162,81 @@ def rename_tracks(metadata, log, dry_run=False):
         file.rename(file.parent / f"{str(track).zfill(padding)} - {clean_title}{file.suffix}")
         log.debug(metadata['final_output'] / f"{str(track).zfill(padding)} - {clean_title}{file.suffix}")
         track += 1
+
+    return
+
+
+def update_id3_tags(metadata, log, dry_run=False):
+    """
+    Update ID3 tags for all audio files in the processed folder using metadata.
+    Adds language field and prepends ASIN/ISBN to comment if present.
+    """
+    if dry_run:
+        print(f"[DRY-RUN] Would update ID3 tags in: {metadata['final_output']}")
+    audio_ext = ['mp3', 'm4b', 'm4a', 'ogg']
+    audio_files = []
+    for extension in audio_ext:
+        results = sorted(metadata['final_output'].rglob(f"./*.{extension}"))
+        for result in results:
+            audio_files.append(result)
+
+    for file in audio_files:
+        # Prepare tag values
+        title = metadata.get('title', '')
+        author = metadata.get('author', '')
+        album = metadata.get('series', '') or title
+        genre = metadata.get('genres', '')
+        year = metadata.get('publishyear', '')
+        language = metadata.get('language', '')
+        asin = metadata.get('asin', '')
+        isbn = metadata.get('isbn', '')
+        summary = metadata.get('summary', '')
+
+        # Build comment with ASIN/ISBN prefix if available
+        comment_parts = []
+        if asin:
+            comment_parts.append(f"ASIN: {asin}")
+        if isbn:
+            comment_parts.append(f"ISBN: {isbn}")
+        comment_prefix = " | ".join(comment_parts)
+        comment = f"{comment_prefix} | {summary}" if comment_prefix else summary
+
+        # Use language for ID3 COMM frame, fallback to 'eng'
+        comm_lang = language if language else 'eng'
+
+        if dry_run:
+            print(f"[DRY-RUN] Would set tags for: {file}")
+            print(f"  Title: {title}")
+            print(f"  Artist/Author: {author}")
+            print(f"  Album/Series: {album}")
+            print(f"  Genre: {genre}")
+            print(f"  Year: {year}")
+            print(f"  Language: {language}")
+            print(f"  Comment: {comment}")
+            print(f"  COMM lang: {comm_lang}")
+            continue
+
+        try:
+            if file.suffix.lower() == ".mp3":
+                audio = EasyID3(str(file))
+                audio['title'] = title
+                audio['artist'] = author
+                audio['album'] = album
+                if genre:
+                    audio['genre'] = genre
+                if year:
+                    audio['date'] = year
+                if language:
+                    audio['language'] = language
+                audio.save()
+                # Add comment using mutagen.id3 for full support
+                id3 = ID3(str(file))
+                id3.add(COMM(encoding=3, lang=comm_lang, desc='desc', text=comment))
+                id3.save()
+            else:
+                # For non-mp3, skip or implement with mutagen.File if needed
+                log.info(f"Skipping non-mp3 file for ID3 tagging: {file}")
+        except Exception as e:
+            log.info(f"Failed to update ID3 tags for {file}: {e}")
 
     return
