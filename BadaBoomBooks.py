@@ -226,15 +226,31 @@ def read_opf_metadata(opf_path):
     try:
         tree = ET.parse(opf_path)
         root = tree.getroot()
-        ns = {'dc': 'http://purl.org/dc/elements/1.1/'}
+        ns = {
+            'dc': 'http://purl.org/dc/elements/1.1/',
+            'opf': 'http://www.idpf.org/2007/opf',
+            'calibre': 'http://calibre.kovidgoyal.net/2008/metadata'
+        }
+        # Standard fields
         metadata['title'] = root.find('.//dc:title', ns).text if root.find('.//dc:title', ns) is not None else ''
-        metadata['author'] = root.find('.//dc:creator', ns).text if root.find('.//dc:creator', ns) is not None else ''
+        metadata['subtitle'] = root.find('.//dc:subtitle', ns).text if root.find('.//dc:subtitle', ns) is not None else ''
         metadata['summary'] = root.find('.//dc:description', ns).text if root.find('.//dc:description', ns) is not None else ''
+        metadata['author'] = root.find('.//dc:creator[@opf:role="aut"]', ns).text if root.find('.//dc:creator[@opf:role="aut"]', ns) is not None else ''
+        metadata['narrator'] = root.find('.//dc:creator[@opf:role="nrt"]', ns).text if root.find('.//dc:creator[@opf:role="nrt"]', ns) is not None else ''
+        metadata['publisher'] = root.find('.//dc:publisher', ns).text if root.find('.//dc:publisher', ns) is not None else ''
+        metadata['publishyear'] = root.find('.//dc:date', ns).text if root.find('.//dc:date', ns) is not None else ''
         metadata['language'] = root.find('.//dc:language', ns).text if root.find('.//dc:language', ns) is not None else ''
-        metadata['isbn'] = root.find('.//dc:identifier', ns).text if root.find('.//dc:identifier', ns) is not None else ''
-        # Add more fields as needed
+        # Identifiers
+        metadata['isbn'] = root.find('.//dc:identifier[@opf:scheme="ISBN"]', ns).text if root.find('.//dc:identifier[@opf:scheme="ISBN"]', ns) is not None else ''
+        metadata['asin'] = root.find('.//dc:identifier[@opf:scheme="ASIN"]', ns).text if root.find('.//dc:identifier[@opf:scheme="ASIN"]', ns) is not None else ''
+        # Genres
         genre_elements = root.findall('.//dc:subject', ns)
         metadata['genres'] = ','.join([g.text for g in genre_elements if g.text]) if genre_elements else ''
+        # Series and volume number (calibre style)
+        series_meta = root.find('.//ns0:meta[@name="calibre:series"]', {'ns0': ns['opf']})
+        metadata['series'] = series_meta.attrib['content'] if series_meta is not None and 'content' in series_meta.attrib else ''
+        volume_meta = root.find('.//ns0:meta[@name="calibre:series_index"]', {'ns0': ns['opf']})
+        metadata['volumenumber'] = volume_meta.attrib['content'] if volume_meta is not None and 'content' in volume_meta.attrib else ''
     except Exception as e:
         metadata['failed'] = True
         metadata['failed_exception'] = f"OPF parsing error: {e}"
