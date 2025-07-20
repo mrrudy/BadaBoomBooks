@@ -253,10 +253,14 @@ if args.book_root:
         print(f"\nThe book root path is not a directory or does not exist: {book_root}")
         input("\nPress enter to exit...")
         sys.exit()
-    # Add all first-level subdirectories as book folders
-    for sub in book_root.iterdir():
-        if sub.is_dir():
-            folders.append(sub.resolve())
+    # Find all subfolders (any depth) that contain at least one audio file
+    audio_exts = {'.mp3', '.m4a', '.m4b', '.wma', '.flac', '.ogg'}
+    candidate_folders = set()
+    for file in book_root.rglob('*'):
+        if file.is_file() and file.suffix.lower() in audio_exts:
+            candidate_folders.add(file.parent.resolve())
+    folders.extend(sorted(candidate_folders))
+
 # Add any folders given as positional arguments
 folders += [Path(argument.rstrip(r'\/"\'')).resolve() for argument in getattr(args, 'folders', [])]
 
