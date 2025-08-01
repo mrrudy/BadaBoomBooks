@@ -305,23 +305,21 @@ def scrape_goodreads_type2(parsed, metadata, log):
     try:
         element = parsed.select_one("div[class='BookPageTitleSection__title']").select_one('h3')
         log.info(f"Series element: {str(element)}")
-        series = re.search(r'^(.+?)(#[\d\.]+)?$', element.getText(strip=True))[1]
-        if series is not None:
-            metadata['series'] = series
+        # Match series name and number(s) like "#3", "#3-4", "#3,4", "#3.5"
+        series_match = re.search(r'^(.+?)\s*#([\d\-,\.]+)$', element.getText(strip=True))
+        if series_match:
+            metadata['series'] = series_match.group(1)
+            # Normalize series number: replace '-' with ',' and remove spaces
+            raw_number = series_match.group(2).replace('-', ',').replace(' ', '')
+            metadata['volumenumber'] = raw_number
+        else:
+            # Fallback: just series name if no number found
+            metadata['series'] = element.getText(strip=True)
     except Exception as e:
         log.info(f"No series scraped, leaving blank ({metadata['input_folder']}) | {e}")
 
     # --- Series Number ---
-    if metadata['series'] != '':
-        try:
-            element = parsed.select_one("div[class='BookPageTitleSection__title']").select_one('h3')
-            log.info(f"Series element: {str(element)}")
-            volume_number = re.search(r'^.+?#([\d\.]+)$', element.getText(strip=True))[1]
-            log.info(f"Volume number element: {str(volume_number)}")
-            if volume_number is not None:
-                metadata['volumenumber'] = volume_number
-        except Exception as e:
-            log.info(f"No volume number scraped, leaving blank ({metadata['input_folder']}) | {e}")
+    # Already handled above, no need for separate block
 
     # --- Genres ---
     try:

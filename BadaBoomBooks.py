@@ -400,7 +400,10 @@ for key, value in config.items('urls'):
     print(f"""
 Title: {metadata['title']}
 Author: {metadata['author']}
-URL: {metadata['url']}""")
+URL: {metadata['url']}
+Series: {metadata['series']} | Volume: {metadata['volumenumber']}
+
+""")
 
     # ----- [--output] Prepare output folder -----
     if args.output:
@@ -415,7 +418,9 @@ URL: {metadata['url']}""")
 
     # Clean series and volume data if they exist
     series_clean = re.sub(r"[^\w\-\.\(\) ]+", '', metadata['series']) if metadata['series'] else ""
-    volumenumber_clean = re.sub(r"[^\w\-\.\(\) ]+", '', metadata['volumenumber']) if metadata['volumenumber'] else ""
+    volumenumber_clean = re.sub(r"[^\w\-\.\(\), ]+", '', metadata['volumenumber']) if metadata['volumenumber'] else ""
+
+    log.info(f"Cleaned series: {series_clean} | {volumenumber_clean}")
 
     # Prepare output path
 
