@@ -1,4 +1,4 @@
-__version__ = 0.40
+__version__ = 0.60
 
 from pathlib import Path
 import argparse
@@ -66,7 +66,7 @@ Cheers to the community for providing our content and building our tools!
 
 1) Call the script and pass it the audiobook folders you would like to process, including any optional arguments...
     python BadaBoomBooks.py "C:\Path\To\Audiobook_folder1\" "C:\Path\To\Audiobook_folder2" ...
-    python BadaBoomBooks.py -s audible -c -o -i "C:\Path\To\Audiobook_folder1\" "C:\Path\To\Audiobook_folder2\" ...
+    python BadaBoomBooks.py --infotxt --opf --rename --series --id3-tag --move -O 'T:\Sorted' -R 'T:\Incoming\'
 
 2) Your browser will open and perform a web search for the current book, simply select the correct web-page and copy the url to your clipboard.
 
