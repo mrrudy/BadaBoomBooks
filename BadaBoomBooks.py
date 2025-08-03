@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 root_path = Path(sys.argv[0]).resolve().parent
 sys.path.append(str(root_path))
 from scrapers import http_request, api_audible, scrape_goodreads_type1, scrape_goodreads_type2
+from scrapers import scrape_lubimyczytac
 from optional import create_opf, create_info, flatten_folder, rename_tracks, update_id3_tags
 
 from bs4 import BeautifulSoup
@@ -148,7 +149,12 @@ def clipboard_queue(folder, config, dry_run=False):
     clipboard_old = pyperclip.paste()
 #    log.debug(f"clipboard_old: {clipboard_old}")
 
-    if (re.search(r"http.+goodreads.+book/show/\d+", clipboard_old)) or (re.search(r"http.+audible.+/pd/[\w-]+Audiobook/\w+\??", clipboard_old)) or (re.search(r"skip", clipboard_old)):  # Remove old script contents from clipboard
+    if (
+        re.search(r"http.+goodreads.+book/show/\d+", clipboard_old)
+        or re.search(r"http.+audible.+/pd/[\w-]+Audiobook/\w+\??", clipboard_old)
+        or re.search(r"https?://lubimyczytac\.pl/ksiazka/\d+/.+", clipboard_old)
+        or re.search(r"skip", clipboard_old)
+    ):  # Remove old script contents from clipboard
         clipboard_old = '__clipboard_cleared__'
         pyperclip.copy(clipboard_old)
 
@@ -192,6 +198,21 @@ def clipboard_queue(folder, config, dry_run=False):
 
             config['urls'][b64_folder] = b64_url
             print(f"\n\nGoodreads URL: {goodreads_url}")
+            break
+        elif re.search(r"^https?://lubimyczytac\.pl/ksiazka/\d+/.+", clipboard_current):
+            # --- A valid lubimyczytac.pl URL ---
+            log.debug(f"Clipboard lubimyczytac.pl match: {clipboard_current}")
+
+            # Use the full clipboard_current as the URL
+            lmc_url = clipboard_current.strip()
+            b64_folder = base64.standard_b64encode(bytes(str(book_path.resolve()), 'utf-8')).decode()
+            b64_url = base64.standard_b64encode(bytes(lmc_url, 'utf-8')).decode()
+
+            log.debug(f"b64_folder: {b64_folder}")
+            log.debug(f"b64_url: {b64_url}")
+
+            config['urls'][b64_folder] = b64_url
+            print(f"\n\nlubimyczytac.pl URL: {lmc_url}")
             break
         else:
             continue
@@ -391,6 +412,16 @@ for key, value in config.items('urls'):
                 elif parsed.select_one("script[type='application/ld+json']") is not None:
                     metadata = scrape_goodreads_type2(parsed, metadata, log)
                     break
+            elif 'lubimyczytac.pl' in metadata['url']:
+                metadata, response = http_request(metadata, log)
+                if args.debug:
+                    with Path(root_path / 'lubimyczytac_page.html').open('w', encoding='utf-8') as html_page:
+                        html_page.write(response.text)
+                if metadata['skip'] is True:
+                    break
+                parsed = BeautifulSoup(response.text, 'html.parser')
+                metadata = scrape_lubimyczytac(parsed, metadata, log)
+                break
 
     if metadata['failed'] is True:
         failed_books.append(f"{metadata['input_folder']} ({metadata['failed_exception']})")

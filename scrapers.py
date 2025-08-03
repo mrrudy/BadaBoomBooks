@@ -229,7 +229,7 @@ def scrape_goodreads_type1(parsed, metadata, log):
     # --- Genres ---
     try:
         genres_list = []
-        genres_container = parsed.select_one('div[data-testid="genresList"]')
+        genres_container = parsed.select('div[data-testid="genresList"]')
         if genres_container:
             genre_buttons = genres_container.select('a.Button--tag span.Button__labelItem')
             for button in genre_buttons:
@@ -324,7 +324,7 @@ def scrape_goodreads_type2(parsed, metadata, log):
     # --- Genres ---
     try:
         genres_list = []
-        genres_container = parsed.select_one('div[data-testid="genresList"]')
+        genres_container = parsed.select('div[data-testid="genresList"]')
         if genres_container:
             genre_buttons = genres_container.select('a.Button--tag span.Button__labelItem')
             for button in genre_buttons:
@@ -377,5 +377,178 @@ def scrape_goodreads_type2(parsed, metadata, log):
             log.info(f"No ISBN found in JSON-LD or HTML for {metadata['input_folder']}")
     except Exception as e:
         log.info(f"Exception while scraping ISBN ({metadata['input_folder']}) | {e}")
+
+    return metadata
+
+
+def scrape_lubimyczytac(parsed, metadata, log):
+    # ----- Scrape a lubimyczytac.pl book page for metadata -----
+    log.debug(f"Scraping lubimyczytac.pl for metadata: {metadata['input_folder']}")
+
+    # --- Title ---
+    try:
+        # Try meta og:title first (usually "Title | Author")
+        meta_title = parsed.find("meta", property="og:title")
+        if meta_title and meta_title.get("content"):
+            # Remove author if present
+            title = meta_title["content"].split("|")[0].strip()
+            metadata['title'] = title
+        else:
+            element = parsed.select_one('h1.book__title')
+            if element:
+                metadata['title'] = element.get_text(strip=True)
+    except Exception as e:
+        log.info(f"No title scraped ({metadata['input_folder']}) | {e}")
+
+    # --- Author ---
+    try:
+        # Try meta books:author
+        meta_author = parsed.find("meta", property="books:author")
+        if meta_author and meta_author.get("content"):
+            metadata['author'] = meta_author["content"].strip()
+        else:
+            element = parsed.select_one('a.author__link')
+            if element:
+                metadata['author'] = element.get_text(strip=True)
+    except Exception as e:
+        log.info(f"No author scraped ({metadata['input_folder']}) | {e}")
+
+    # --- Series and volume (if present) ---
+    try:
+        # Try to find the series in the "Cykl" section
+        series = ""
+        volumenumber = ""
+        # Look for "Cykl:" in the details
+        for dt in parsed.select('dt'):
+            if dt.get_text(strip=True).lower().startswith("cykl"):
+                dd = dt.find_next_sibling('dd')
+                if dd:
+                    # Example: "Pamiętniki Mordbota (tom 1-2)"
+                    series_text = dd.get_text(strip=True)
+                    match = re.match(r'(.+?)\s*\(tom\s*([^\)]+)\)', series_text)
+                    if match:
+                        series = match.group(1)
+                        raw_number = match.group(2).replace(' ', '')
+                        # Handle 1-2 as 1,2; 1 as 1; 4.5 as 4.5
+                        if '-' in raw_number:
+                            parts = raw_number.split('-')
+                            if len(parts) == 2 and parts[0].replace('.', '', 1).isdigit() and parts[1].replace('.', '', 1).isdigit():
+                                # Range, e.g. 1-2 or 4-5
+                                try:
+                                    start = float(parts[0])
+                                    end = float(parts[1])
+                                    # Only integer ranges are expanded, otherwise keep as is
+                                    if start.is_integer() and end.is_integer():
+                                        volumenumber = ','.join(str(int(i)) for i in range(int(start), int(end)+1))
+                                    else:
+                                        volumenumber = raw_number
+                                except Exception:
+                                    volumenumber = raw_number
+                            else:
+                                volumenumber = raw_number
+                        else:
+                            volumenumber = raw_number
+                    else:
+                        series = series_text
+        # Fallback: try the old selector
+        if not series:
+            series_element = parsed.select_one('a.book__series-link')
+            if series_element:
+                series_text = series_element.get_text(strip=True)
+                match = re.match(r'(.+?)\s*\(tom\s*([^\)]+)\)', series_text)
+                if match:
+                    series = match.group(1)
+                    raw_number = match.group(2).replace(' ', '')
+                    if '-' in raw_number:
+                        parts = raw_number.split('-')
+                        if len(parts) == 2 and parts[0].replace('.', '', 1).isdigit() and parts[1].replace('.', '', 1).isdigit():
+                            try:
+                                start = float(parts[0])
+                                end = float(parts[1])
+                                if start.is_integer() and end.is_integer():
+                                    volumenumber = ','.join(str(int(i)) for i in range(int(start), int(end)+1))
+                                else:
+                                    volumenumber = raw_number
+                            except Exception:
+                                volumenumber = raw_number
+                        else:
+                            volumenumber = raw_number
+                    else:
+                        volumenumber = raw_number
+                else:
+                    series = series_text
+        # If still no volumenumber, set to "0"
+        if not volumenumber:
+            volumenumber = "0"
+        metadata['series'] = series
+        metadata['volumenumber'] = volumenumber
+    except Exception as e:
+        log.info(f"No series scraped ({metadata['input_folder']}) | {e}")
+
+    # --- Summary / Description ---
+    try:
+        # Try meta og:description first
+        meta_desc = parsed.find("meta", property="og:description")
+        if meta_desc and meta_desc.get("content"):
+            metadata['summary'] = meta_desc["content"].strip()
+        else:
+            # Fallback to visible description
+            element = parsed.select_one('div.book__description')
+            if element:
+                metadata['summary'] = element.get_text(strip=True)
+    except Exception as e:
+        log.info(f"No summary scraped ({metadata['input_folder']}) | {e}")
+
+    # --- Genres (tags) ---
+    try:
+        genres_list = []
+        # Try meta genre
+        meta_genre = parsed.find("meta", property="genre")
+        if meta_genre and meta_genre.get("content"):
+            genres_list.append(meta_genre["content"].strip())
+        # Fallback to visible tags
+        genres_container = parsed.select('a.book__category')
+        for genre in genres_container:
+            genre_text = genre.get_text(strip=True)
+            if genre_text:
+                genres_list.append(genre_text)
+        metadata['genres'] = ','.join(genres_list)
+    except Exception as e:
+        log.info(f"No genres scraped ({metadata['input_folder']}) | {e}")
+
+    # --- Language ---
+    try:
+        # Try meta inLanguage or og:inLanguage
+        meta_lang = parsed.find("meta", attrs={"property": "inLanguage"})
+        if meta_lang and meta_lang.get("content"):
+            metadata['language'] = meta_lang["content"].strip()
+        else:
+            # Fallback: look for "Język:" in details
+            for dt in parsed.select('dt'):
+                if dt.get_text(strip=True).lower().startswith("język"):
+                    dd = dt.find_next_sibling('dd')
+                    if dd:
+                        metadata['language'] = dd.get_text(strip=True)
+        # Fallback: default to 'pol'
+        if not metadata.get('language'):
+            metadata['language'] = 'pol'
+    except Exception as e:
+        log.info(f"No language scraped ({metadata['input_folder']}) | {e}")
+
+    # --- ISBN ---
+    try:
+        # Try meta books:isbn
+        meta_isbn = parsed.find("meta", property="books:isbn")
+        if meta_isbn and meta_isbn.get("content"):
+            metadata['isbn'] = meta_isbn["content"].strip()
+        else:
+            # Fallback: look for "ISBN:" in details
+            for dt in parsed.select('dt'):
+                if dt.get_text(strip=True).lower().startswith("isbn"):
+                    dd = dt.find_next_sibling('dd')
+                    if dd:
+                        metadata['isbn'] = dd.get_text(strip=True)
+    except Exception as e:
+        log.info(f"No ISBN scraped ({metadata['input_folder']}) | {e}")
 
     return metadata
