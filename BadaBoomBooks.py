@@ -75,7 +75,7 @@ Cheers to the community for providing our content and building our tools!
 
 # ===== Prepare vaild arguments =====
 parser.add_argument('-O', dest='output', metavar='OUTPUT', help='Path to place organized folders')
-parser.add_argument('-c', '--copy', action='store_true', help='Copy folders instead of renaming them')
+parser.add_argument('-c', '--copy', action='store_true', help='Copy folders instead of moving them')
 parser.add_argument('-d', '--debug', action='store_true', help='Enable debugging to log file')
 parser.add_argument('-D', '--dry-run', action='store_true', help="Perform a trial run without making any changes to filesystem")
 parser.add_argument('-f', '--flatten', action='store_true', help="Flatten book folders, useful if the player has issues with multi-folder books")
@@ -89,6 +89,7 @@ parser.add_argument('-S', '--series', action='store_true', help="Include series 
 parser.add_argument('-R', '--book-root', dest='book_root', metavar='BOOK_ROOT', help='Treat all first-level subdirectories of this directory as books to process')
 parser.add_argument('-I', '--id3-tag', action='store_true', help='Update ID3 tags of audio files using scraped metadata')
 parser.add_argument('-F', '--from-opf', action='store_true', help='Read metadata from metadata.opf file if present, fallback to web scraping if not')
+parser.add_argument('-m', '--move', action='store_true', help="Move folders instead of copying them")
 
 args = parser.parse_args()
 
@@ -471,13 +472,13 @@ Series: {metadata['series']} | Volume: {metadata['volumenumber']}
     print(f"\nOutput: {metadata['final_output']}")
 
     # ----- [--copy] Copy/move book folder ---
-    if args.copy:
+    if args.copy and not args.move:
         if args.dry_run:
             print(f"\n[DRY-RUN] Would copy '{folder}' to '{metadata['final_output']}'")
         else:
             print("\nCopying...")
             shutil.copytree(folder, metadata['final_output'], dirs_exist_ok=True, copy_function=shutil.copy2)
-    else:  # - Move folder (default) -
+    elif args.move and not args.copy:
         if args.dry_run:
             print(f"\n[DRY-RUN] Would move '{folder}' to '{metadata['final_output']}'")
         else:
@@ -488,7 +489,13 @@ Series: {metadata['series']} | Volume: {metadata['volumenumber']}
                 log.info(f"Couldn't move folder directly, performing copy-move (metadata['title']) | {e}")
                 shutil.copytree(folder, metadata['final_output'], dirs_exist_ok=True, copy_function=shutil.copy2)
                 shutil.rmtree(folder)
-
+    elif args.copy and args.move:
+        print("\n[WARNING] Both --copy and --move are set - ucertian what user wants - doing nothing.")
+        exit(1)
+    elif not args.copy and not args.move:
+        print("\n[INFO] Neither --copy nor --move are set - all operations will be performed in the current location.")
+        # final_outut needs to be set to the current folder
+        metadata['final_output'] = folder
     # ----- [--flatten] Flatten Book Folders -----
     if args.flatten:
         if args.dry_run:
