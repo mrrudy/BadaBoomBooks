@@ -2,6 +2,7 @@
 LANGUAGE_MAP = {
     "english": "eng",
     "polish": "pol",
+    "polski": "pol",
     "french": "fre",
     "german": "ger",
     "spanish": "spa",

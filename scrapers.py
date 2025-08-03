@@ -487,15 +487,26 @@ def scrape_lubimyczytac(parsed, metadata, log):
 
     # --- Summary / Description ---
     try:
-        # Try meta og:description first
-        meta_desc = parsed.find("meta", property="og:description")
-        if meta_desc and meta_desc.get("content"):
-            metadata['summary'] = meta_desc["content"].strip()
+        # Prefer the full description from the collapse-content
+        desc_element = parsed.select_one('div#book-description div.collapse-content')
+        if desc_element:
+            # Get all text, preserving line breaks between <p> tags
+            paragraphs = desc_element.find_all(['p', 'br'])
+            description = '\n'.join(p.get_text(separator=' ', strip=True) for p in paragraphs if p.name == 'p')
+            if not description:
+                # fallback to all text
+                description = desc_element.get_text(separator='\n', strip=True)
+            metadata['summary'] = description
         else:
-            # Fallback to visible description
-            element = parsed.select_one('div.book__description')
-            if element:
-                metadata['summary'] = element.get_text(strip=True)
+            # Fallback to meta og:description
+            meta_desc = parsed.find("meta", property="og:description")
+            if meta_desc and meta_desc.get("content"):
+                metadata['summary'] = meta_desc["content"].strip()
+            else:
+                # Fallback to visible description
+                element = parsed.select_one('div.book__description')
+                if element:
+                    metadata['summary'] = element.get_text(strip=True)
     except Exception as e:
         log.info(f"No summary scraped ({metadata['input_folder']}) | {e}")
 
@@ -521,17 +532,22 @@ def scrape_lubimyczytac(parsed, metadata, log):
         # Try meta inLanguage or og:inLanguage
         meta_lang = parsed.find("meta", attrs={"property": "inLanguage"})
         if meta_lang and meta_lang.get("content"):
-            metadata['language'] = meta_lang["content"].strip()
+            language = meta_lang["content"].strip()
         else:
             # Fallback: look for "Język:" in details
+            language = ""
             for dt in parsed.select('dt'):
                 if dt.get_text(strip=True).lower().startswith("język"):
                     dd = dt.find_next_sibling('dd')
                     if dd:
-                        metadata['language'] = dd.get_text(strip=True)
+                        language = dd.get_text(strip=True)
         # Fallback: default to 'pol'
-        if not metadata.get('language'):
-            metadata['language'] = 'pol'
+        if not language:
+            language = 'pol'
+        # Convert to ISO code using LANGUAGE_MAP (like in goodreads scrapper)
+        lang_key = language.strip().lower()
+        iso_code = LANGUAGE_MAP.get(lang_key, language)
+        metadata['language'] = iso_code
     except Exception as e:
         log.info(f"No language scraped ({metadata['input_folder']}) | {e}")
 
