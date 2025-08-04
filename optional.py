@@ -40,7 +40,9 @@ def create_opf(metadata, opf_template, dry_run=False):
     template = re.sub(r"__PUBLISHER__", xml_escape(metadata['publisher']), template)
 
     # - Publish Year -
-    template = re.sub(r"__PUBLISHYEAR__", xml_escape(metadata['publishyear']), template)
+    # Use datepublished if available, else fallback to publishyear
+    date_value = metadata.get('datepublished') or metadata.get('publishyear', '')
+    template = re.sub(r"__PUBLISHYEAR__", xml_escape(date_value), template)
 
     # - Genres -
     if isinstance(metadata['genres'], list):
@@ -164,6 +166,7 @@ def update_id3_tags(metadata, log, dry_run=False):
     """
     Update ID3 tags for all audio files in the processed folder using metadata.
     Adds language field and prepends ASIN/ISBN to comment if present.
+    Now also uses datepublished (YYYY-MM-DD) if available, else publishyear.
     """
     if dry_run:
         print(f"[DRY-RUN] Would update ID3 tags in: {metadata['final_output']}")
@@ -180,7 +183,8 @@ def update_id3_tags(metadata, log, dry_run=False):
         author = metadata.get('author', '')
         album = metadata.get('series', '') or title
         genre = metadata.get('genres', '')
-        year = metadata.get('publishyear', '')
+        # Use datepublished if available, else publishyear
+        date_value = metadata.get('datepublished') or metadata.get('publishyear', '')
         language = metadata.get('language', '')
         asin = metadata.get('asin', '')
         isbn = metadata.get('isbn', '')
@@ -204,7 +208,7 @@ def update_id3_tags(metadata, log, dry_run=False):
             print(f"  Artist/Author: {author}")
             print(f"  Album/Series: {album}")
             print(f"  Genre: {genre}")
-            print(f"  Year: {year}")
+            print(f"  Date: {date_value}")
             print(f"  Language: {language}")
             print(f"  Comment: {comment}")
             print(f"  COMM lang: {comm_lang}")
@@ -218,14 +222,16 @@ def update_id3_tags(metadata, log, dry_run=False):
                 audio['album'] = album
                 if genre:
                     audio['genre'] = genre
-                if year:
-                    audio['date'] = year
+                if date_value:
+                    audio['date'] = date_value
                 if language:
                     audio['language'] = language
                 audio.save()
-                # Add comment using mutagen.id3 for full support
+                # Add comment and date using mutagen.id3 for full support
                 id3 = ID3(str(file))
                 id3.add(COMM(encoding=3, lang=comm_lang, desc='desc', text=comment))
+                if date_value:
+                    id3.add(TDRC(encoding=3, text=date_value))
                 id3.save()
             else:
                 # For non-mp3, skip or implement with mutagen.File if needed

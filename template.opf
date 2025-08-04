@@ -14,7 +14,7 @@
     <dc:publisher>__PUBLISHER__</dc:publisher>
     <dc:date>__PUBLISHYEAR__</dc:date>                           <!-- publish year -->
     <dc:language>__LANGUAGE__</dc:language>
-__GENRES__
+    __GENRES__
     <dc:identifier opf:scheme="ISBN">__ISBN__</dc:identifier>
     <dc:identifier opf:scheme="ASIN">__ASIN__</dc:identifier>
     <ns0:meta name="calibre:series" content="__SERIES__" /> <!-- series -->

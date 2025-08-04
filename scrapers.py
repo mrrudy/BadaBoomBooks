@@ -413,6 +413,19 @@ def scrape_lubimyczytac(parsed, metadata, log):
     except Exception as e:
         log.info(f"No author scraped ({metadata['input_folder']}) | {e}")
 
+    # --- Original Title ---
+    try:
+        original_title = ""
+        for dt in parsed.select('dt'):
+            if dt.get_text(strip=True).lower().startswith("tytuł oryginału"):
+                dd = dt.find_next_sibling('dd')
+                if dd:
+                    original_title = dd.get_text(strip=True)
+                    break
+        metadata['subtitle'] = original_title
+    except Exception as e:
+        log.info(f"No original title scraped ({metadata['input_folder']}) | {e}")
+
     # --- Series and volume (if present) ---
     try:
         # Try to find the series in the "Cykl" section
@@ -566,5 +579,26 @@ def scrape_lubimyczytac(parsed, metadata, log):
                         metadata['isbn'] = dd.get_text(strip=True)
     except Exception as e:
         log.info(f"No ISBN scraped ({metadata['input_folder']}) | {e}")
+
+    # --- Date Published ---
+    try:
+        # Try JSON-LD first
+        jsonld_script = parsed.find("script", {"type": "application/ld+json"})
+        date_published = ""
+        if jsonld_script:
+            try:
+                jsonld = json.loads(jsonld_script.get_text(strip=True))
+                if isinstance(jsonld, dict) and "datePublished" in jsonld:
+                    date_published = jsonld["datePublished"]
+            except Exception as e:
+                log.info(f"Could not parse JSON-LD for datePublished: {e}")
+        # Fallback: meta tag or visible text if needed
+        if date_published:
+            # OPF expects YYYY-MM-DD or YYYY, so keep as is or trim to YYYY-MM-DD
+            metadata['datepublished'] = date_published.strip()
+        else:
+            metadata['datepublished'] = ""
+    except Exception as e:
+        log.info(f"No datePublished scraped ({metadata['input_folder']}) | {e}")
 
     return metadata

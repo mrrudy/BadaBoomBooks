@@ -359,6 +359,7 @@ for key, value in config.items('urls'):
         'narrator': '',
         'publisher': '',
         'publishyear': '',
+        'datepublished': '',
         'genres': '',
         'isbn': '',
         'asin': '',
