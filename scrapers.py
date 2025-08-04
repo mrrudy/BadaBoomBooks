@@ -601,4 +601,20 @@ def scrape_lubimyczytac(parsed, metadata, log):
     except Exception as e:
         log.info(f"No datePublished scraped ({metadata['input_folder']}) | {e}")
 
+    # --- Cover URL ---
+    try:
+        cover_url = ""
+        # Try meta og:image first
+        meta_img = parsed.find("meta", property="og:image")
+        if meta_img and meta_img.get("content"):
+            cover_url = meta_img["content"].strip()
+        # Fallback: look for image in the book cover section
+        if not cover_url:
+            img_tag = parsed.select_one('div.book-cover img')
+            if img_tag and img_tag.get("src"):
+                cover_url = img_tag["src"].strip()
+        metadata['cover_url'] = cover_url
+    except Exception as e:
+        log.info(f"No cover scraped ({metadata['input_folder']}) | {e}")
+
     return metadata

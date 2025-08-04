@@ -11,6 +11,7 @@ import sys
 import time
 import webbrowser
 import xml.etree.ElementTree as ET
+import requests  # Add at the top if not already imported
 
 root_path = Path(sys.argv[0]).resolve().parent
 sys.path.append(str(root_path))
@@ -90,6 +91,7 @@ parser.add_argument('-R', '--book-root', dest='book_root', metavar='BOOK_ROOT', 
 parser.add_argument('-I', '--id3-tag', action='store_true', help='Update ID3 tags of audio files using scraped metadata')
 parser.add_argument('-F', '--from-opf', action='store_true', help='Read metadata from metadata.opf file if present, fallback to web scraping if not')
 parser.add_argument('-m', '--move', action='store_true', help="Move folders instead of copying them")
+parser.add_argument('-C', '--cover', action='store_true', help="Download and save cover image as cover.jpg in audiobook folder")
 
 args = parser.parse_args()
 
@@ -391,6 +393,29 @@ for key, value in config.items('urls'):
             print(f"Failed to read OPF metadata: {metadata.get('failed_exception')}")
             continue
         print(f"Read metadata from OPF for {metadata['input_folder']}")
+
+        # If a URL is present in OPF, try to scrape missing fields
+        if metadata.get('url'):
+            if 'audible.com' in metadata['url']:
+                # Only fill missing fields
+                temp_metadata, response = http_request(metadata, log, f"https://api.audible.com/1.0/catalog/products/{metadata['asin']}", {'response_groups': 'contributors,product_desc,series,product_extended_attrs,media'})
+                page = response.json()['product']
+                temp_metadata = api_audible(metadata, page, log)
+            elif 'goodreads.com' in metadata['url']:
+                temp_metadata, response = http_request(metadata, log)
+                parsed = BeautifulSoup(response.text, 'html.parser')
+                if parsed.select_one('#bookTitle') is not None:
+                    temp_metadata = scrape_goodreads_type1(parsed, metadata, log)
+                elif parsed.select_one("script[type='application/ld+json']") is not None:
+                    temp_metadata = scrape_goodreads_type2(parsed, metadata, log)
+            elif 'lubimyczytac.pl' in metadata['url']:
+                temp_metadata, response = http_request(metadata, log)
+                parsed = BeautifulSoup(response.text, 'html.parser')
+                temp_metadata = scrape_lubimyczytac(parsed, metadata, log)
+            # Fill only missing fields from temp_metadata
+            for k, v in temp_metadata.items():
+                if not metadata.get(k) and v:
+                    metadata[k] = v
     else:
         # --- Request Metadata ---
         while True:
@@ -540,6 +565,20 @@ Series: {metadata['series']} | Volume: {metadata['volumenumber']}
     # ----- [--id3-tag] Update ID3 tags -----
     if args.id3_tag:
         update_id3_tags(metadata, log, dry_run=args.dry_run)
+
+    # ----- [--cover] Download cover image -----
+    if args.cover and metadata.get('cover_url'):
+        cover_path = metadata['final_output'] / 'cover.jpg'
+        try:
+            response = requests.get(metadata['cover_url'], timeout=15)
+            if response.status_code == 200:
+                with open(cover_path, 'wb') as f:
+                    f.write(response.content)
+                print(f"Downloaded cover image to {cover_path}")
+            else:
+                print(f"Failed to download cover image: HTTP {response.status_code}")
+        except Exception as e:
+            print(f"Error downloading cover image: {e}")
 
     # ---- Folder complete ----
     print("\nDone!")
