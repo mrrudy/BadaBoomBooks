@@ -164,12 +164,26 @@ def clipboard_queue(folder, config, dry_run=False):
             log.debug(f"TinyTag audio file: {file}")
             track = TinyTag.get(str(file))
             try:
-                title = re.sub(r"\&", 'and', track.album).strip()
-                if title == '':
+                album = re.sub(r"\&", 'and', track.album).strip() if track.album else ''
+                track_title = re.sub(r"\&", 'and', track.title).strip() if track.title else ''
+                # Prefer both if both are present and different, else use whichever is present
+                if album and track_title:
+                    if album.lower() != track_title.lower():
+                        title = f"{track_title} ({album})"
+                    else:
+                        title = track_title
+                elif track_title:
+                    title = track_title
+                elif album:
+                    title = album
+                else:
                     title = False
-                author = re.sub(r"\&", 'and', track.artist).strip()
-                if author == '':
+
+                author = re.sub(r"\&", 'and', track.artist).strip() if track.artist else ''
+                if not author:
                     author = False
+                if not title:
+                    title = False
                 break
             except Exception as e:
                 log.debug(f"Couldn't get search term metadata from ID3 tags, using foldername ({file}) | {e}")
@@ -202,7 +216,7 @@ def clipboard_queue(folder, config, dry_run=False):
         pyperclip.copy(clipboard_old)
 
     # - Wait for  url to be coppied
-    print(f"\nCopy the Audible or Goodreads URL for \"{book_path.name}\"\nCopy 'skip' to skip the current book...           ", end='')
+    print(f"\nCopy the URL for \"{book_path.name}\" | \"{search_term}\"\nCopy 'skip' to skip the current book...           ", end='')
     while True:
         time.sleep(1)
         clipboard_current = pyperclip.paste()
