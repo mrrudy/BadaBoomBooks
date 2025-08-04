@@ -540,16 +540,19 @@ Series: {metadata['series']} | Volume: {metadata['volumenumber']}
     # ----- [--cover] Download cover image -----
     if args.cover and metadata.get('cover_url'):
         cover_path = metadata['final_output'] / 'cover.jpg'
-        try:
-            response = requests.get(metadata['cover_url'], timeout=15)
-            if response.status_code == 200:
-                with open(cover_path, 'wb') as f:
-                    f.write(response.content)
-                print(f"Downloaded cover image to {cover_path}")
-            else:
-                print(f"Failed to download cover image: HTTP {response.status_code}")
-        except Exception as e:
-            print(f"Error downloading cover image: {e}")
+        if args.dry_run:
+            print(f"[DRY-RUN] Would download cover image from {metadata['cover_url']} to {cover_path}")
+        else:
+            try:
+                response = requests.get(metadata['cover_url'], timeout=15)
+                if response.status_code == 200:
+                    with open(cover_path, 'wb') as f:
+                        f.write(response.content)
+                    print(f"Downloaded cover image to {cover_path}")
+                else:
+                    print(f"Failed to download cover image: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"Error downloading cover image: {e}")
 
     # ---- Folder complete ----
     print("\nDone!")
