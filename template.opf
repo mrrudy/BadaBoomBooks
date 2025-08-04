@@ -17,6 +17,7 @@
     __GENRES__
     <dc:identifier opf:scheme="ISBN">__ISBN__</dc:identifier>
     <dc:identifier opf:scheme="ASIN">__ASIN__</dc:identifier>
+    <dc:source>__SOURCE__</dc:source> <!-- source URL for metadat -->
     <ns0:meta name="calibre:series" content="__SERIES__" /> <!-- series -->
     <ns0:meta name="calibre:series_index" content="__VOLUMENUMBER__" /> <!-- volumeNumber -->
     <dc:tag></dc:tag>

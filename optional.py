@@ -70,6 +70,9 @@ def create_opf(metadata, opf_template, dry_run=False):
     # - Volume Number -
     template = re.sub(r"__VOLUMENUMBER__", xml_escape(metadata['volumenumber']), template)
 
+    # - Source (URL) -
+    template = re.sub(r"__SOURCE__", xml_escape(metadata.get('url', '')), template)
+
     opf_output = metadata['final_output'] / 'metadata.opf'
     with opf_output.open('w', encoding='utf-8') as file:
         file.write(template)

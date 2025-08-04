@@ -277,6 +277,10 @@ def read_opf_metadata(opf_path):
         metadata['series'] = series_meta.attrib['content'] if series_meta is not None and 'content' in series_meta.attrib else ''
         volume_meta = root.find('.//ns0:meta[@name="calibre:series_index"]', {'ns0': ns['opf']})
         metadata['volumenumber'] = volume_meta.attrib['content'] if volume_meta is not None and 'content' in volume_meta.attrib else ''
+        # --- Read URL from <dc:source> if present ---
+        url_elem = root.find('.//dc:source', ns)
+        if url_elem is not None and url_elem.text:
+            metadata['url'] = url_elem.text.strip()
     except Exception as e:
         metadata['failed'] = True
         metadata['failed_exception'] = f"OPF parsing error: {e}"
