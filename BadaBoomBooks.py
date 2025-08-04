@@ -82,7 +82,7 @@ parser.add_argument('-f', '--flatten', action='store_true', help="Flatten book f
 parser.add_argument('-i', '--infotxt', action='store_true', help="Generate 'info.txt' file, used by SmartAudioBookPlayer to display book summary")
 parser.add_argument('-o', '--opf', action='store_true', help="Generate 'metadata.opf' file, used by Audiobookshelf to import metadata")
 parser.add_argument('-r', '--rename', action='store_true', help="Rename audio tracks to '## - {title}' format")
-parser.add_argument('-s', '--site', metavar='',  default='both', choices=['audible', 'goodreads', 'both'], help="Specify the site to perform initial searches [audible, goodreads, both]")
+parser.add_argument('-s', '--site', metavar='',  default='all', choices=['audible', 'goodreads', 'lubimyczytac', 'all'], help="Specify the site to perform initial searches [audible, goodreads, lubimyczytac, all]")
 parser.add_argument('-v', '--version', action='version', version=f"Version {__version__}")
 parser.add_argument('folders', metavar='folder', nargs='*', help='Audiobook folder(s) to be organized')
 parser.add_argument('-S', '--series', action='store_true', help="Include series information in output path (series/volume - title)")
@@ -144,8 +144,12 @@ def clipboard_queue(folder, config, dry_run=False):
         webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=site:audible.com {search_term}", new=2)
     elif args.site == 'goodreads':
         webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=site:goodreads.com {search_term}", new=2)
-    elif args.site == 'both':
-        webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=audible.com goodreads.com {search_term}", new=2)
+    elif args.site == 'lubimyczytac':
+        webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=site:lubimyczytac.pl {search_term}", new=2)
+    elif args.site == 'all':
+        # Open all three searches
+        webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=lubimyczytac.pl audible.com goodreads.com {search_term}", new=2)
+
 
     clipboard_old = pyperclip.paste()
 #    log.debug(f"clipboard_old: {clipboard_old}")
@@ -153,7 +157,7 @@ def clipboard_queue(folder, config, dry_run=False):
     if (
         re.search(r"http.+goodreads.+book/show/\d+", clipboard_old)
         or re.search(r"http.+audible.+/pd/[\w-]+Audiobook/\w+\??", clipboard_old)
-        or re.search(r"https?://lubimyczytac\.pl/ksiazka/\d+/.+", clipboard_old)
+        or re.search(r"https?://lubimyczytac\.pl/(ksiazka|audiobook)/\d+/.+", clipboard_old)
         or re.search(r"skip", clipboard_old)
     ):  # Remove old script contents from clipboard
         clipboard_old = '__clipboard_cleared__'
@@ -200,7 +204,7 @@ def clipboard_queue(folder, config, dry_run=False):
             config['urls'][b64_folder] = b64_url
             print(f"\n\nGoodreads URL: {goodreads_url}")
             break
-        elif re.search(r"^https?://lubimyczytac\.pl/ksiazka/\d+/.+", clipboard_current):
+        elif re.search(r"^https?://lubimyczytac\.pl/(ksiazka|audiobook)/\d+/.+", clipboard_current):
             # --- A valid lubimyczytac.pl URL ---
             log.debug(f"Clipboard lubimyczytac.pl match: {clipboard_current}")
 
