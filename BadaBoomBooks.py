@@ -29,6 +29,47 @@ debug_file = root_path / 'debug.log'
 opf_template = root_path / 'template.opf'
 default_output = '_BadaBoomBooks_'  # In the same directory as the input folder
 
+# --- Define the scraper registry ---
+SCRAPER_REGISTRY = {
+    "audible": {
+        "domain": "audible.com",
+        "url_pattern": r"^http.+audible.+/pd/[\w-]+Audiobook/\w{10}",
+        "search_url": lambda search_term: f"https://duckduckgo.com/?t=ffab&q=site:audible.com {search_term}",
+        "scrape_func": lambda metadata, log, response: api_audible(
+            metadata, response.json()['product'], log
+        ),
+        "http_request": lambda metadata, log: http_request(
+            metadata, log, f"https://api.audible.com/1.0/catalog/products/{metadata['asin']}", 
+            {'response_groups': 'contributors,product_desc,series,product_extended_attrs,media'}
+        ),
+        "preprocess": lambda metadata: metadata.update({
+            'asin': re.search(r"^http.+audible.+/pd/[\w-]+Audiobook/(\w{10})", metadata['url'])[1]
+        })
+    },
+    "goodreads": {
+        "domain": "goodreads.com",
+        "url_pattern": r"^http.+goodreads.+book/show/\d+",
+        "search_url": lambda search_term: f"https://duckduckgo.com/?t=ffab&q=site:goodreads.com {search_term}",
+        "scrape_func": lambda metadata, log, response: (
+            scrape_goodreads_type1(BeautifulSoup(response.text, 'html.parser'), metadata, log)
+            if BeautifulSoup(response.text, 'html.parser').select_one('#bookTitle')
+            else scrape_goodreads_type2(BeautifulSoup(response.text, 'html.parser'), metadata, log)
+        ),
+        "http_request": lambda metadata, log: http_request(metadata, log),
+        "preprocess": None
+    },
+    "lubimyczytac": {
+        "domain": "lubimyczytac.pl",
+        "url_pattern": r"^https?://lubimyczytac\.pl/(ksiazka|audiobook)/\d+/.+",
+        "search_url": lambda search_term: f"https://duckduckgo.com/?t=ffab&q=site:lubimyczytac.pl {search_term}",
+        "scrape_func": lambda metadata, log, response: scrape_lubimyczytac(
+            BeautifulSoup(response.text, 'html.parser'), metadata, log
+        ),
+        "http_request": lambda metadata, log: http_request(metadata, log),
+        "preprocess": None
+    }
+}
+
 # --- Logging configuration ---
 log.basicConfig(level=log.DEBUG, filename=str(debug_file), filemode='w', style='{', format="Line: {lineno} | Level: {levelname} |  Time: {asctime} | Info: {message}")
 
@@ -142,26 +183,21 @@ def clipboard_queue(folder, config, dry_run=False):
 
     # - Prompt user to copy AudioBook url
     log.info(f"Search term: {search_term}")
-    if args.site == 'audible':
-        webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=site:audible.com {search_term}", new=2)
-    elif args.site == 'goodreads':
-        webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=site:goodreads.com {search_term}", new=2)
-    elif args.site == 'lubimyczytac':
-        webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=site:lubimyczytac.pl {search_term}", new=2)
-    elif args.site == 'all':
-        # Open all three searches
-        webbrowser.open(f"https://duckduckgo.com/?t=ffab&q=lubimyczytac.pl audible.com goodreads.com {search_term}", new=2)
-
+    if args.site == 'all':
+        # Build a single search query with all domains
+        domains = [f"site:{cfg['domain']}" for cfg in SCRAPER_REGISTRY.values()]
+        query = "("+ " OR ".join(domains) + f") {search_term}"
+        webbrowser.open(f"https://duckduckgo.com/?t=ffab&q={query}", new=2)
+    elif args.site in SCRAPER_REGISTRY:
+        webbrowser.open(SCRAPER_REGISTRY[args.site]["search_url"](search_term), new=2)
 
     clipboard_old = pyperclip.paste()
 #    log.debug(f"clipboard_old: {clipboard_old}")
 
     if (
-        re.search(r"http.+goodreads.+book/show/\d+", clipboard_old)
-        or re.search(r"http.+audible.+/pd/[\w-]+Audiobook/\w+\??", clipboard_old)
-        or re.search(r"https?://lubimyczytac\.pl/(ksiazka|audiobook)/\d+/.+", clipboard_old)
+        any(re.search(cfg["url_pattern"], clipboard_old) for cfg in SCRAPER_REGISTRY.values())
         or re.search(r"skip", clipboard_old)
-    ):  # Remove old script contents from clipboard
+    ):
         clipboard_old = '__clipboard_cleared__'
         pyperclip.copy(clipboard_old)
 
@@ -178,55 +214,31 @@ def clipboard_queue(folder, config, dry_run=False):
             print(f"\n\nSkipping: {book_path.name}")
             skipped_books.append(book_path.name)
             break
-        elif re.search(r"^http.+audible.+/pd/[\w-]+Audiobook/\w{10}", clipboard_current):
-            # --- A valid Audible URL ---
-            log.debug(f"Clipboard Audible match: {clipboard_current}")
-
-            audible_url = re.search(r"^http.+audible.+/pd/[\w-]+Audiobook/\w{10}", clipboard_current)[0]
-            b64_folder = base64.standard_b64encode(bytes(str(book_path.resolve()), 'utf-8')).decode()
-            b64_url = base64.standard_b64encode(bytes(audible_url, 'utf-8')).decode()
-
-            log.debug(f"b64_folder: {b64_folder}")
-            log.debug(f"b64_url: {b64_url}")
-
-            config['urls'][b64_folder] = b64_url
-            print(f"\n\nAudible URL: {audible_url}")
-            break
-        elif re.search(r"^http.+goodreads.+book/show/\d+", clipboard_current):
-            # --- A valid Goodreads URL
-            log.debug(f"Clipboard GoodReads match: {clipboard_current}")
-
-            goodreads_url = re.search(r"^http.+goodreads.+book/show/\d+", clipboard_current)[0]
-            b64_folder = base64.standard_b64encode(bytes(str(book_path.resolve()), 'utf-8')).decode()
-            b64_url = base64.standard_b64encode(bytes(goodreads_url, 'utf-8')).decode()
-
-            log.debug(f"b64_folder: {b64_folder}")
-            log.debug(f"b64_url: {b64_url}")
-
-            config['urls'][b64_folder] = b64_url
-            print(f"\n\nGoodreads URL: {goodreads_url}")
-            break
-        elif re.search(r"^https?://lubimyczytac\.pl/(ksiazka|audiobook)/\d+/.+", clipboard_current):
-            # --- A valid lubimyczytac.pl URL ---
-            log.debug(f"Clipboard lubimyczytac.pl match: {clipboard_current}")
-
-            # Use the full clipboard_current as the URL
-            lmc_url = clipboard_current.strip()
-            b64_folder = base64.standard_b64encode(bytes(str(book_path.resolve()), 'utf-8')).decode()
-            b64_url = base64.standard_b64encode(bytes(lmc_url, 'utf-8')).decode()
-
-            log.debug(f"b64_folder: {b64_folder}")
-            log.debug(f"b64_url: {b64_url}")
-
-            config['urls'][b64_folder] = b64_url
-            print(f"\n\nlubimyczytac.pl URL: {lmc_url}")
-            break
         else:
+            site_key = detect_url_site(clipboard_current)
+            if site_key:
+                url = clipboard_current.strip()
+                b64_folder = base64.standard_b64encode(bytes(str(book_path.resolve()), 'utf-8')).decode()
+                b64_url = base64.standard_b64encode(bytes(url, 'utf-8')).decode()
+                config['urls'][b64_folder] = b64_url
+                print(f"\n\n{SCRAPER_REGISTRY[site_key]['domain']} URL: {url}")
+                break
             continue
 
     pyperclip.copy(clipboard_old)
     return config
 
+def get_site_key(url):
+    for key, cfg in SCRAPER_REGISTRY.items():
+        if re.search(cfg["url_pattern"], url):
+            return key
+    return None
+
+def detect_url_site(clipboard_value):
+    for key, cfg in SCRAPER_REGISTRY.items():
+        if re.search(cfg["url_pattern"], clipboard_value):
+            return key
+    return None
 
 def read_opf_metadata(opf_path):
     metadata = {
@@ -396,67 +408,26 @@ for key, value in config.items('urls'):
 
         # If a URL is present in OPF, try to scrape missing fields
         if metadata.get('url'):
-            if 'audible.com' in metadata['url']:
-                # Only fill missing fields
-                temp_metadata, response = http_request(metadata, log, f"https://api.audible.com/1.0/catalog/products/{metadata['asin']}", {'response_groups': 'contributors,product_desc,series,product_extended_attrs,media'})
-                page = response.json()['product']
-                temp_metadata = api_audible(metadata, page, log)
-            elif 'goodreads.com' in metadata['url']:
-                temp_metadata, response = http_request(metadata, log)
-                parsed = BeautifulSoup(response.text, 'html.parser')
-                if parsed.select_one('#bookTitle') is not None:
-                    temp_metadata = scrape_goodreads_type1(parsed, metadata, log)
-                elif parsed.select_one("script[type='application/ld+json']") is not None:
-                    temp_metadata = scrape_goodreads_type2(parsed, metadata, log)
-            elif 'lubimyczytac.pl' in metadata['url']:
-                temp_metadata, response = http_request(metadata, log)
-                parsed = BeautifulSoup(response.text, 'html.parser')
-                temp_metadata = scrape_lubimyczytac(parsed, metadata, log)
-            # Fill only missing fields from temp_metadata
-            for k, v in temp_metadata.items():
-                if not metadata.get(k) and v:
-                    metadata[k] = v
+            site_key = get_site_key(metadata['url'])
+            if site_key:
+                cfg = SCRAPER_REGISTRY[site_key]
+                if cfg.get("preprocess"):
+                    cfg["preprocess"](metadata)
+                temp_metadata, response = cfg["http_request"](metadata, log)
+                temp_metadata = cfg["scrape_func"](metadata, log, response)
+                for k, v in temp_metadata.items():
+                    if not metadata.get(k) and v:
+                        metadata[k] = v
     else:
-        # --- Request Metadata ---
-        while True:
+        site_key = get_site_key(metadata['url'])
+        if site_key:
+            cfg = SCRAPER_REGISTRY[site_key]
+            if cfg.get("preprocess"):
+                cfg["preprocess"](metadata)
+            metadata, response = cfg["http_request"](metadata, log)
+            metadata = cfg["scrape_func"](metadata, log, response)
+            
 
-            if 'audible.com' in metadata['url']:
-                # --- ASIN ---
-                metadata['asin'] = re.search(r"^http.+audible.+/pd/[\w-]+Audiobook/(\w{10})", metadata['url'])[1]
-                query = {'response_groups': 'contributors,product_desc,series,product_extended_attrs,media'}
-                metadata, response = http_request(metadata, log, f"https://api.audible.com/1.0/catalog/products/{metadata['asin']}", query)
-                if metadata['skip'] is True:
-                    break
-                page = response.json()['product']
-                metadata = api_audible(metadata, page, log)
-                break
-
-            elif 'goodreads.com' in metadata['url']:
-                metadata, response = http_request(metadata, log)
-
-                if args.debug:
-                    with Path(root_path / 'goodreads_page.html').open('w', encoding='utf-8') as html_page:
-                        html_page.write(response.text)
-
-                if metadata['skip'] is True:
-                    break
-                parsed = BeautifulSoup(response.text, 'html.parser')
-                if parsed.select_one('#bookTitle') is not None:
-                    metadata = scrape_goodreads_type1(parsed, metadata, log)
-                    break
-                elif parsed.select_one("script[type='application/ld+json']") is not None:
-                    metadata = scrape_goodreads_type2(parsed, metadata, log)
-                    break
-            elif 'lubimyczytac.pl' in metadata['url']:
-                metadata, response = http_request(metadata, log)
-                if args.debug:
-                    with Path(root_path / 'lubimyczytac_page.html').open('w', encoding='utf-8') as html_page:
-                        html_page.write(response.text)
-                if metadata['skip'] is True:
-                    break
-                parsed = BeautifulSoup(response.text, 'html.parser')
-                metadata = scrape_lubimyczytac(parsed, metadata, log)
-                break
 
     if metadata['failed'] is True:
         failed_books.append(f"{metadata['input_folder']} ({metadata['failed_exception']})")
