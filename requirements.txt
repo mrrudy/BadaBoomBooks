@@ -8,3 +8,4 @@ soupsieve==2.3.2.post1
 tinytag==1.8.1
 urllib3==1.26.14
 mutagen==1.46.0
+duckduckgo_search

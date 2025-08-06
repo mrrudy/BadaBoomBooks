@@ -132,5 +132,9 @@ dmypy.json
 *.swp
 queue.ini
 goodreads_page.html
-*/
 lubimyczytac_page.html
+
+# Debug files
+debug_pages/
+debug_ddg_page.html
+debug_selectors.py

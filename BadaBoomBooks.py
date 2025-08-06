@@ -12,12 +12,22 @@ import time
 import webbrowser
 import xml.etree.ElementTree as ET
 import requests  # Add at the top if not already imported
+#from duckduckgo_search import DDGS
+import threading
+import tempfile
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+import os
+os.environ['GCM_ENCRYPTION_DISABLED'] = '1'  # Disable problematic GCM encryption
 
 root_path = Path(sys.argv[0]).resolve().parent
 sys.path.append(str(root_path))
 from scrapers import http_request, api_audible, scrape_goodreads_type1, scrape_goodreads_type2
 from scrapers import scrape_lubimyczytac
 from optional import create_opf, create_info, flatten_folder, rename_tracks, update_id3_tags
+
+
 
 from bs4 import BeautifulSoup
 from tinytag import TinyTag
@@ -133,6 +143,10 @@ parser.add_argument('-I', '--id3-tag', action='store_true', help='Update ID3 tag
 parser.add_argument('-F', '--from-opf', action='store_true', help='Read metadata from metadata.opf file if present, fallback to web scraping if not')
 parser.add_argument('-m', '--move', action='store_true', help="Move folders instead of copying them")
 parser.add_argument('-C', '--cover', action='store_true', help="Download and save cover image as cover.jpg in audiobook folder")
+parser.add_argument('--auto-search', action='store_true', help='Automatically search and fetch candidate pages for each book')
+parser.add_argument('--search-limit', type=int, default=5, help='Number of search results to fetch per site')
+parser.add_argument('--download-limit', type=int, default=3, help='Number of candidate pages to download per site')
+parser.add_argument('--search-delay', type=float, default=2.0, help='Delay (seconds) between search/download requests')
 
 args = parser.parse_args()
 
@@ -194,7 +208,30 @@ def clipboard_queue(folder, config, dry_run=False):
         search_term = title
     else:
         search_term = str(book_path.name)
-
+    if args.auto_search:
+        if args.site == 'all':
+            site_keys = list(SCRAPER_REGISTRY.keys())
+        else:
+            site_keys = [args.site]
+        site_key, url, html = auto_search_and_select(
+            search_term,
+            site_keys,
+            search_limit=args.search_limit,
+            download_limit=args.download_limit,
+            delay=args.search_delay
+        )
+        if url:
+            b64_folder = base64.standard_b64encode(bytes(str(book_path.resolve()), 'utf-8')).decode()
+            b64_url = base64.standard_b64encode(bytes(url, 'utf-8')).decode()
+            config['urls'][b64_folder] = b64_url
+            print(f"\nSelected {SCRAPER_REGISTRY[site_key]['domain']} URL: {url}")
+            # Optionally, store html for later scraping if needed
+            return config
+        else:
+            print("Auto search failed will follow with user based URL.")
+#            skipped_books.append(book_path.name)
+#            return config
+    
     # - Prompt user to copy AudioBook url
     log.info(f"Search term: {search_term}")
     if args.site == 'all':
@@ -313,6 +350,177 @@ def read_opf_metadata(opf_path):
         metadata['failed'] = True
         metadata['failed_exception'] = f"OPF parsing error: {e}"
     return metadata
+
+def auto_search_and_select(search_term, site_keys, search_limit=5, download_limit=3, delay=2.0):
+    """
+    For each site in site_keys, search DuckDuckGo for search_term, filter results by url_pattern,
+    download up to download_limit matching pages, and let user choose which to use.
+    Returns: (site_key, url, html) or (None, None, None) if skipped.
+    """
+    candidates = []
+    # Create a debug folder in the app directory
+    debug_dir = root_path / 'debug_pages'
+    debug_dir.mkdir(exist_ok=True)
+    temp_dir = str(debug_dir)
+    chrome_options = Options()
+    #chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--enable-unsafe-swiftshader")
+    
+    # Add these new flags to prevent GPU initialization
+    chrome_options.add_argument("--disable-3d-apis")
+    chrome_options.add_argument("--disable-accelerated-2d-canvas")
+    chrome_options.add_argument("--disable-gl-drawing-for-tests")
+    
+    # Disable all unnecessary services
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-software-rasterizer")
+    chrome_options.add_argument("--disable-gpu-compositing")
+    chrome_options.add_argument("--disable-cloud-import")
+    chrome_options.add_argument("--disable-component-update")
+    chrome_options.add_argument("--disable-background-networking")
+    chrome_options.add_argument("--disable-client-side-phishing-detection")
+    
+    # Set log level to suppress warnings
+    chrome_options.add_argument("--log-level=3")
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    
+    # Add user agent to avoid bot detection
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+    
+    driver = webdriver.Chrome(options=chrome_options)
+    try:
+        for site_key in site_keys:
+            cfg = SCRAPER_REGISTRY[site_key]
+            print(f"\nSearching {cfg['domain']} for: {search_term}")
+            log.debug(f"Searching {cfg['domain']} for: {search_term}")
+            query = f"site:{cfg['domain']} {search_term}"
+            ddg_url = f"https://duckduckgo.com/?q={requests.utils.quote(query)}"
+            driver.get(ddg_url)
+            time.sleep(delay)
+            results = []
+            
+            # Try multiple possible selectors for DuckDuckGo results
+            elems = []
+            snippets = []
+            
+            # First try: current DuckDuckGo format (2024/2025)
+            elems = driver.find_elements(By.CSS_SELECTOR, 'article[data-testid="result"] h2 a')
+            snippets = driver.find_elements(By.CSS_SELECTOR, 'article[data-testid="result"] [data-result="snippet"]')
+            
+            # Fallback: older DuckDuckGo format
+            if not elems:
+                elems = driver.find_elements(By.CSS_SELECTOR, '.result__a')
+                snippets = driver.find_elements(By.CSS_SELECTOR, '.result__snippet')
+            
+            # Another fallback: generic result links
+            if not elems:
+                elems = driver.find_elements(By.CSS_SELECTOR, '[data-testid="result"] a[href]')
+                snippets = driver.find_elements(By.CSS_SELECTOR, '[data-testid="result"] span')
+            
+            # Last resort: any links in results
+            if not elems:
+                elems = driver.find_elements(By.CSS_SELECTOR, 'ol.react-results--main a[href]')
+                snippets = driver.find_elements(By.CSS_SELECTOR, 'ol.react-results--main .result__snippet')
+            
+            log.debug(f"Found {len(elems)} result elements using DuckDuckGo selectors")
+            
+            for i, elem in enumerate(elems[:search_limit]):
+                href = elem.get_attribute('href')
+                title = elem.text or elem.get_attribute('aria-label') or 'No title'
+                snippet = snippets[i].text if i < len(snippets) else ''
+                
+                # Skip javascript links and invalid URLs
+                if href and not href.startswith('javascript:') and ('http' in href):
+                    results.append({'title': title, 'href': href, 'body': snippet})
+                    log.debug(f"Added result: {title} -> {href}")
+            # Debug: Save search results page
+            if args.debug:
+                search_debug_path = Path(temp_dir) / f"search_{site_key}_{re.sub(r'[^a-zA-Z0-9]', '_', search_term)[:30]}.html"
+                with open(search_debug_path, "w", encoding="utf-8") as f:
+                    f.write(driver.page_source)
+                log.debug(f"Wrote search results HTML for {site_key} to {search_debug_path}")
+                print(f"  Debug: Saved search page to {search_debug_path}")
+                print(f"  Debug: Found {len(results)} valid results for {site_key}")
+
+            filtered = []
+            for r in results:
+                if re.search(cfg["url_pattern"], r["href"]):
+                    filtered.append(r)
+                    log.debug(f"Matched URL pattern for {site_key}: {r['href']}")
+                if len(filtered) >= download_limit:
+                    break
+            
+            if not filtered:
+                print(f"  No matching results found for {site_key} (pattern: {cfg['url_pattern']})")
+                log.debug(f"No matches for {site_key}. Total results: {len(results)}, Pattern: {cfg['url_pattern']}")
+                if results:
+                    log.debug(f"Sample URLs that didn't match: {[r['href'][:100] for r in results[:3]]}")
+            
+            for idx, r in enumerate(filtered):
+                print(f"  [{len(candidates)+idx+1}] {r['title']}\n      {r['href']}\n      {r['body'][:100]}...")
+            # Download pages with rate limiting
+            for r in filtered:
+                try:
+                    print(f"  Downloading: {r['href']}")
+                    resp = requests.get(r['href'], timeout=15)
+                    candidates.append({
+                        "site_key": site_key,
+                        "url": r['href'],
+                        "title": r['title'],
+                        "snippet": r['body'],
+                        "html": resp.text
+                    })
+                    # Debug: Save downloaded page
+                    if args.debug:
+                        safe_title = re.sub(r'[^a-zA-Z0-9]', '_', r['title'])[:30]
+                        page_debug_path = Path(temp_dir) / f"page_{site_key}_{safe_title}.html"
+                        with open(page_debug_path, "w", encoding="utf-8") as f:
+                            f.write(resp.text)
+                        log.debug(f"Wrote downloaded page for {site_key}: {r['href']} to {page_debug_path}")
+                        print(f"    Debug: Saved page to {page_debug_path}")
+                    time.sleep(delay)
+                except Exception as e:
+                    print(f"    Failed to download {r['href']}: {e}")
+                    log.debug(f"Failed to download {r['href']}: {e}")
+            time.sleep(delay)
+    finally:
+        driver.quit()
+
+    if not candidates:
+        print("No candidate pages found.")
+        log.debug("No candidate pages found for search_term: " + search_term)
+        return None, None, None
+    print("\nCandidate pages:")
+    for i, c in enumerate(candidates, 1):
+        print(f"[{i}] {c['site_key']} | {c['title']}\n    {c['url']}\n    {c['snippet'][:100]}...\n")
+    print("[0] Skip this book")
+    # Placeholder for future AI selection
+    # ai_choice = ai_select_best_candidate(candidates, search_term)
+    # if ai_choice is not None:
+    #     return candidates[ai_choice]['site_key'], candidates[ai_choice]['url'], candidates[ai_choice]['html']
+    while True:
+        try:
+            choice = int(input(f"Select the best candidate [1-{len(candidates)}] or 0 to skip: "))
+            if choice == 0:
+                log.debug("User skipped selection for search_term: " + search_term)
+                return None, None, None
+            if 1 <= choice <= len(candidates):
+                c = candidates[choice-1]
+                # Debug: Save chosen page
+                if args.debug:
+                    safe_title = re.sub(r'[^a-zA-Z0-9]', '_', c['title'])[:30]
+                    chosen_debug_path = Path(temp_dir) / f"chosen_{c['site_key']}_{safe_title}.html"
+                    with open(chosen_debug_path, "w", encoding="utf-8") as f:
+                        f.write(c['html'])
+                    log.debug(f"User selected candidate: {c['url']} (saved to {chosen_debug_path})")
+                    print(f"Debug: Saved chosen page to {chosen_debug_path}")
+                return c['site_key'], c['url'], c['html']
+        except Exception as e:
+            log.debug(f"Invalid input during candidate selection: {e}")
+        print("Invalid input. Try again.")
 
 # ==========================================================================================================
 # ==========================================================================================================
