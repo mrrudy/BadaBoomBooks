@@ -1,92 +1,234 @@
-# :book: BadaBoomBooks :bomb:
+# BadaBoomBooks - Audiobook Organization Tool
 
-Quickly organize audiobooks using a terminal and web-browser
+An advanced audiobook organization tool that automatically scrapes metadata from multiple sources and organizes your audiobook collection with proper folder structure, metadata files, and ID3 tags.
 
+## 🚀 Quick Start
 
-# Dependencies
-* A web-browser
-* [Python 3.8+](https://www.python.org/)
-* `pip install -r requirements.txt`
+```bash
+# Basic usage - organize audiobooks with automatic search
+python BadaBoomBooks.py --auto-search --opf --id3-tag -O "C:\Organized Books" "C:\Audiobook Folder"
 
+# Advanced usage - series organization with all features
+python BadaBoomBooks.py --auto-search --series --opf --infotxt --id3-tag --cover --move -O "T:\Sorted" -R "T:\Incoming"
 
-# Description
-The inconsistencies between audiobooks don't make for reliable matches using fully-automated solutions. This program is a semi-automatic process, that way you can be sure your books are matched properly, while only taking a couple clicks and a few seconds per book.
+# Dry run to see what would happen
+python BadaBoomBooks.py --dry-run --auto-search --series --opf "C:\Audiobook Folder"
+```
 
-After calling the script and passing it audiobook folders, it will read the ID3 tags of your audiobook and make a websearch for `{title} by {author}` in your web browser. If the tags are blank it'll fallback to the folder name.
+## ✨ Features
 
-All you need to do is select the correct web-page, copy the URL, and the folder will be added to the queue. The whole process usually only takes a few seconds per book.
+### 🔍 **Intelligent Search & Scraping**
+- **Multi-site Support**: Audible, Goodreads, LubimyCzytac.pl
+- **Automated Search**: Browser automation with candidate selection
+- **Manual Search**: Clipboard monitoring for manual URL input
+- **Smart Fallbacks**: Multiple scraping strategies per site
 
-Once every folder you passed has been added to the queue, the organization will begin, at which point no further user-input is required. By default, folders are outputted to `./_BadaBoomBooks_/` in the same directory as the input folder, this way you can keep track of which ones you've already processed.
+### 📁 **Advanced Organization**
+- **Series Support**: Organize by author/series/volume structure
+- **Flexible Output**: Copy, move, or in-place processing
+- **Path Cleaning**: Automatic filename sanitization
+- **Duplicate Handling**: Smart folder deduplication
 
-# Examples
+### 📋 **Metadata Management**
+- **OPF Generation**: Audiobookshelf-compatible metadata files
+- **Info.txt Creation**: SmartAudioBookPlayer summaries
+- **ID3 Tag Updates**: Complete audio file tagging
+- **Cover Downloads**: High-quality cover art
 
-### - Basic -
+### 🎵 **Audio Processing**
+- **Track Renaming**: Standardized "## - Title" format
+- **Folder Flattening**: Single-level audio organization
+- **Multi-format Support**: MP3, M4A, M4B, FLAC, OGG, WMA
+- **Metadata Embedding**: Complete ID3 tag population
 
-This is is the most basic usage, only folders are renamed, filenames will be unnaffected. For first-timers, I recommend running this on a copy of your audiobook to see how it works.
+## 🏗️ Architecture
 
-ℹ️ Rename (move) audiobook folders to  `{author}/{title}` structure
-
-`$ python ./BadaBoomBooks.py '/Path/to/Audiobook-1/' '/Path/to/Audiobook-2/' ...`
-
-### - AudioBookShelf (Recommended) -
-The ASIN from Audible will be saved to a `metadata.opf` file, which AudioBookShelf will read during a library scan. Using that ASIN number, AudioBookShelf will be able to perform a perfect quick-match, which means you'll have the exact metadata corresponding to this book. The `info.txt` file is used by SmartAudioBookPlayer to display a summary, doesn't cost us anything to include it.
-
-ℹ️ Flatten folders, rename files to `{author}/{title}/## - {title}`, generate `metadata.opf`, and generate `info.txt`.
-
-`$python ./BadaBoomBooks.py -f -r -o -i '/Path/to/Audiobook-1/' '/Path/to/Audiobook-2/' ...`
-
-
-# Tips
-* The default behaviour is to RENAME the audiobook folders, pass the `-c` flag to copy instead.
-* The process is smoother if you keep the terminal and browser side-by-side.
-* Break large jobs into smaller batches, that way if the program runs into issues you haven't lost too much effort.
-* Linux Users: If you're have issues with clipboard detection, refer to the [pyperclip](https://pypi.org/project/pyperclip/) page for a possible solution.
+This tool uses a modern modular architecture for maintainability and extensibility:
 
 ```
-$ python ./BadaBoomBooks.py --help
-
-=========================================================================================
-
-    ______           _      ______                      ______             _
-    | ___ \         | |     | ___ \                     | ___ \           | |
-    | |_/ / __ _  __| | __ _| |_/ / ___   ___  _ __ ___ | |_/ / ___   ___ | | _____
-    | ___ \/ _` |/ _` |/ _` | ___ \/ _ \ / _ \| '_ ` _ \| ___ \/ _ \ / _ \| |/ / __|
-    | |_/ / (_| | (_| | (_| | |_/ / (_) | (_) | | | | | | |_/ / (_) | (_) |   <\__ \
-    \____/ \__,_|\__,_|\__,_\____/ \___/ \___/|_| |_| |_\____/ \___/ \___/|_|\_\___/
-
-                            An audioBook organizer (v0.4)
-
-=========================================================================================
-
-usage: python BadaBoomBooks.py [-h] [-O OUTPUT] [-c] [-d] [-f] [-i] [-o] [-r] [-s] [-v] folder [folder ...]
-
-Organize audiobook folders through webscraping metadata
-
-positional arguments:
-  folder         Audiobook folder(s) to be organized
-
-optional arguments:
-  -h, --help     show this help message and exit
-  -O OUTPUT      Path to place organized folders
-  -c, --copy     Copy folders instead of renaming them
-  -d, --debug    Enable debugging to log file
-  -f, --flatten  Flatten book folders, useful if the player has issues with multi-folder books
-  -i, --infotxt  Generate 'info.txt' file, used by SmartAudioBookPlayer to display book summary
-  -o, --opf      Generate 'metadata.opf' file, used by Audiobookshelf to import metadata
-  -r, --rename   Rename audio tracks to '## - {title}' format
-  -s, --site     Specify the site to perform initial searches [audible, goodreads, both]
-  -S, --series   Include series information in output path (series/volume - title)
-  -v, --version  show program's version number and exit
-
-Cheers to the community for providing our content and building our tools!
-
------------------------------------ INSTRUCTIONS --------------------------------------
-
-1) Call the script and pass it the audiobook folders you would like to process, including any optional arguments...
-    python BadaBoomBooks.py "C:\Path\To\Audiobook_folder1" "C:\Path\To\Audiobook_folder2" ...
-    python BadaBoomBooks.py -s audible -c -o -i "C:\Path\To\Audiobook_folder1" "C:\Path\To\Audiobook_folder2" ...
-
-2) Your browser will open and perform a web search for the current book, simply select the correct web-page and copy the url to your clipboard.
-
-3) After building the queue, the process will start and folders will be organized accordingly. Cheers!
+src/
+├── main.py                 # Application orchestrator
+├── config.py              # Configuration & constants
+├── models.py               # Data structures & validation
+├── utils.py                # Utility functions
+├── ui/                     # User interface components
+├── search/                 # Search & URL handling
+├── scrapers/               # Web scraping functionality
+└── processors/             # File & metadata processing
 ```
+
+See [`MODULAR_ARCHITECTURE.md`](MODULAR_ARCHITECTURE.md) for detailed documentation.
+
+## 📖 Usage
+
+### Command Line Arguments
+
+#### Input/Output Options
+- `folders` - Audiobook folder(s) to process
+- `-O, --output` - Output directory for organized books  
+- `-R, --book-root` - Process all audiobook folders in directory
+
+#### Operation Modes
+- `-c, --copy` - Copy folders (preserve originals)
+- `-m, --move` - Move folders (delete originals) 
+- `-D, --dry-run` - Preview changes without modifying files
+
+#### Processing Options
+- `-f, --flatten` - Flatten nested folder structures
+- `-r, --rename` - Rename tracks to standard format
+- `-S, --series` - Organize by series structure
+- `-I, --id3-tag` - Update ID3 tags
+
+#### Metadata Options  
+- `-i, --infotxt` - Generate info.txt summaries
+- `-o, --opf` - Generate OPF metadata files
+- `-C, --cover` - Download cover images
+- `-F, --from-opf` - Read existing OPF metadata
+
+#### Search Options
+- `-s, --site` - Specify search site (audible/goodreads/lubimyczytac/all)
+- `--auto-search` - Automated search with candidate selection
+- `--search-limit` - Results per site (default: 5)
+- `--download-limit` - Pages to download per site (default: 3)
+- `--search-delay` - Delay between requests (default: 2.0s)
+
+#### Debug Options
+- `-d, --debug` - Enable debug logging
+- `-v, --version` - Show version information
+
+### Examples
+
+#### Basic Organization
+```bash
+# Organize single folder with manual search
+python BadaBoomBooks.py "C:\My Audiobook"
+
+# Organize multiple folders
+python BadaBoomBooks.py "Book1" "Book2" "Book3"
+```
+
+#### Automated Processing
+```bash
+# Auto-search with series organization
+python BadaBoomBooks.py --auto-search --series --move \
+  -O "C:\Organized" -R "C:\Incoming"
+
+# Complete processing with all features
+python BadaBoomBooks.py --auto-search --series --opf --infotxt \
+  --id3-tag --cover --flatten --rename --move \
+  -O "T:\Library" "C:\Audiobook"
+```
+
+#### Dry Run Testing
+```bash
+# See what would happen without making changes
+python BadaBoomBooks.py --dry-run --auto-search --series \
+  --opf --id3-tag "C:\Test Folder"
+```
+
+## 📚 Supported Sites
+
+### 🎧 Audible.com
+- **API Integration**: Direct API access for reliable data
+- **Rich Metadata**: Series, narrators, publication info
+- **High Quality**: Official source data
+
+### 📖 Goodreads.com  
+- **Dual Format Support**: Handles old and new page layouts
+- **Comprehensive Data**: Reviews, genres, series information
+- **Language Detection**: Automatic language identification
+
+### 🇵🇱 LubimyCzytac.pl
+- **Polish Content**: Specialized for Polish audiobooks
+- **Series Parsing**: Advanced volume range handling
+- **Original Titles**: Tracks translated vs original titles
+
+## 🔧 Installation
+
+### Requirements
+```bash
+pip install -r requirements.txt
+```
+
+### Dependencies
+- `requests` - HTTP client
+- `beautifulsoup4` - HTML parsing
+- `selenium` - Browser automation
+- `tinytag` - Audio metadata reading
+- `mutagen` - ID3 tag writing
+- `pyperclip` - Clipboard monitoring
+
+### Browser Setup
+Chrome/Chromium required for automated search functionality.
+
+## 📁 Output Structure
+
+### Standard Organization
+```
+Output/
+├── Author Name/
+│   ├── Book Title/
+│   │   ├── 01 - Book Title.mp3
+│   │   ├── 02 - Book Title.mp3
+│   │   ├── metadata.opf
+│   │   ├── info.txt
+│   │   └── cover.jpg
+│   └── Another Book/
+└── Another Author/
+```
+
+### Series Organization (`--series`)
+```
+Output/
+├── Author Name/
+│   └── Series Name/
+│       ├── 1 - First Book/
+│       ├── 2 - Second Book/
+│       └── 3,4 - Combined Volume/
+└── Another Author/
+```
+
+## 🛠️ Development
+
+### Adding New Scrapers
+1. Create scraper class inheriting from `BaseScraper`
+2. Register in `SCRAPER_REGISTRY` 
+3. Implement required methods
+4. Update imports
+
+See [`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md) for detailed development information.
+
+### Testing
+```bash
+# Test individual components
+python -m pytest tests/
+
+# Test imports
+python -c "from src.main import BadaBoomBooksApp; print('✅ Imports working')"
+```
+
+## 📜 Legacy Code
+
+Original monolithic code has been archived in `legacy/` folder. The new modular architecture maintains full backward compatibility while providing enhanced maintainability.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Follow the modular architecture patterns
+4. Add tests for new functionality
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- Community for providing content and building tools
+- Contributors to the libraries this project depends on
+- Users who provided feedback and testing
+
+---
+
+**Happy organizing!** 📚🎧
