@@ -70,8 +70,16 @@ def setup_logging(debug_enabled: bool = False):
         class LimitedSizeFilter(log.Filter):
             def filter(self, record):
                 # Limit log message size to prevent huge debug logs
-                if hasattr(record, 'msg') and len(str(record.msg)) > 1000:
-                    record.msg = str(record.msg)[:1000] + "... [TRUNCATED]"
+                msg_str = str(record.msg)
+                
+                # Completely skip logging huge HTML responses
+                if 'Remote response:' in msg_str or len(msg_str) > 5000:
+                    return False
+                
+                # Limit other large messages
+                if len(msg_str) > 500:
+                    record.msg = msg_str[:500] + "... [TRUNCATED]"
+                
                 return True
         
         # Setup logger with size filter

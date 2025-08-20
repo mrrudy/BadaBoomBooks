@@ -443,16 +443,15 @@ class BadaBoomBooksApp:
             
             # Scrape metadata
             if site_key == 'audible':
-                from .scrapers.audible import api_audible
-                import json
-                page_data = response.json()['product']
-                metadata = api_audible(metadata, page_data, log)
+                # Use new modular Audible scraper
+                scraper = AudibleScraper()
+                metadata = scraper.scrape_metadata(metadata, response, log)
             elif site_key == 'goodreads':
-                from .scrapers.goodreads import GoodreadsScraper
+                # Use new modular Goodreads scraper
                 scraper = GoodreadsScraper()
                 metadata = scraper.scrape_metadata(metadata, response, log)
             elif site_key == 'lubimyczytac':
-                from .scrapers.lubimyczytac import LubimyczytacScraper
+                # Use new modular LubimyCzytac scraper
                 scraper = LubimyczytacScraper()
                 metadata = scraper.scrape_metadata(metadata, response, log)
             
