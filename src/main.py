@@ -204,7 +204,10 @@ class BadaBoomBooksApp:
         """Perform auto-search for a folder."""
         from .utils import generate_search_term
         
+        # Extract current book information for context
+        book_info = self._extract_book_info(folder)
         search_term = generate_search_term(folder)
+        
         self.progress.report_search_progress(search_term, "auto")
         
         # Determine sites to search
@@ -213,9 +216,9 @@ class BadaBoomBooksApp:
         else:
             site_keys = [args.site]
         
-        # Perform search
-        site_key, url, html = self.auto_search.search_and_select(
-            search_term, site_keys, args.search_limit, args.download_limit, args.search_delay
+        # Perform search with book context
+        site_key, url, html = self.auto_search.search_and_select_with_context(
+            search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay
         )
         
         if site_key and url:
@@ -228,7 +231,10 @@ class BadaBoomBooksApp:
     
     def _manual_search_for_folder(self, folder: Path, args: ProcessingArgs) -> bool:
         """Perform manual search for a folder."""
-        site_key, url = self.manual_search.handle_manual_search(folder, args.site)
+        # Extract current book information for context
+        book_info = self._extract_book_info(folder)
+        
+        site_key, url = self.manual_search.handle_manual_search_with_context(folder, book_info, args.site)
         
         if site_key and url:
             self._add_url_to_queue(folder, url)
@@ -248,6 +254,146 @@ class BadaBoomBooksApp:
         b64_url = encode_for_config('OPF')
         self.config['urls'][b64_folder] = b64_url
         print(f"Queued OPF metadata for {folder.name}")
+    
+    def _extract_book_info(self, folder: Path) -> dict:
+        """Extract current book information for context display."""
+        book_info = {
+            'folder_name': folder.name,
+            'source': 'folder name'
+        }
+        
+        try:
+            # Try to read existing OPF file first
+            opf_file = folder / 'metadata.opf'
+            if opf_file.exists():
+                book_info.update(self._extract_from_opf(opf_file))
+                book_info['source'] = 'existing OPF file'
+                return book_info
+            
+            # Try to extract from ID3 tags
+            id3_info = self._extract_from_id3_tags(folder)
+            if id3_info:
+                book_info.update(id3_info)
+                book_info['source'] = 'ID3 tags'
+                return book_info
+                
+        except Exception as e:
+            log.debug(f"Error extracting book info from {folder}: {e}")
+        
+        return book_info
+    
+    def _extract_from_opf(self, opf_file: Path) -> dict:
+        """Extract metadata from existing OPF file."""
+        info = {}
+        
+        try:
+            from xml.etree import ElementTree as ET
+            
+            tree = ET.parse(opf_file)
+            root = tree.getroot()
+            
+            # Define namespace
+            ns = {'dc': 'http://purl.org/dc/elements/1.1/',
+                  'opf': 'http://www.idpf.org/2007/opf'}
+            
+            # Extract basic metadata
+            title_elem = root.find('.//dc:title', ns)
+            if title_elem is not None and title_elem.text:
+                info['title'] = title_elem.text.strip()
+            
+            creator_elem = root.find('.//dc:creator', ns)
+            if creator_elem is not None and creator_elem.text:
+                info['author'] = creator_elem.text.strip()
+            
+            # Extract series info from meta tags
+            for meta in root.findall('.//opf:meta', ns):
+                name = meta.get('name', '')
+                content = meta.get('content', '')
+                
+                if name == 'calibre:series' and content:
+                    info['series'] = content.strip()
+                elif name == 'calibre:series_index' and content:
+                    info['volume'] = content.strip()
+            
+            # Extract other metadata
+            publisher_elem = root.find('.//dc:publisher', ns)
+            if publisher_elem is not None and publisher_elem.text:
+                info['publisher'] = publisher_elem.text.strip()
+            
+            date_elem = root.find('.//dc:date', ns)
+            if date_elem is not None and date_elem.text:
+                date_text = date_elem.text.strip()
+                # Extract year from date
+                import re
+                year_match = re.search(r'(\d{4})', date_text)
+                if year_match:
+                    info['year'] = year_match.group(1)
+            
+            language_elem = root.find('.//dc:language', ns)
+            if language_elem is not None and language_elem.text:
+                info['language'] = language_elem.text.strip()
+                
+        except Exception as e:
+            log.debug(f"Error parsing OPF file {opf_file}: {e}")
+        
+        return info
+    
+    def _extract_from_id3_tags(self, folder: Path) -> dict:
+        """Extract metadata from ID3 tags in audio files."""
+        info = {}
+        
+        try:
+            from tinytag import TinyTag
+            
+            # Find the first audio file
+            audio_files = []
+            for ext in ['.mp3', '.m4a', '.m4b', '.flac', '.ogg', '.wma']:
+                audio_files.extend(folder.glob(f'*{ext}'))
+                if audio_files:
+                    break
+            
+            if not audio_files:
+                return info
+            
+            # Read metadata from first audio file
+            first_file = audio_files[0]
+            tag = TinyTag.get(str(first_file))
+            
+            if tag.title:
+                info['title'] = tag.title.strip()
+            if tag.album and tag.album != tag.title:
+                if 'title' not in info:
+                    info['title'] = tag.album.strip()
+                else:
+                    # Use album as series if different from title
+                    info['series'] = tag.album.strip()
+            
+            if tag.artist:
+                info['author'] = tag.artist.strip()
+            
+            if tag.albumartist and tag.albumartist != tag.artist:
+                if 'author' not in info:
+                    info['author'] = tag.albumartist.strip()
+            
+            if hasattr(tag, 'year') and tag.year:
+                info['year'] = str(tag.year)
+            
+            # Try to extract narrator from comment or other fields
+            if hasattr(tag, 'comment') and tag.comment:
+                comment = tag.comment.lower()
+                if 'narrated by' in comment or 'narrator' in comment:
+                    # Simple extraction - could be enhanced
+                    import re
+                    narrator_match = re.search(r'(?:narrated by|narrator:?)\s*([^,\n]+)', comment, re.IGNORECASE)
+                    if narrator_match:
+                        info['narrator'] = narrator_match.group(1).strip()
+                        
+        except ImportError:
+            log.debug("TinyTag not available for ID3 extraction")
+        except Exception as e:
+            log.debug(f"Error extracting ID3 tags from {folder}: {e}")
+        
+        return info
     
     def _save_queue_config(self):
         """Save the processing queue to configuration file."""

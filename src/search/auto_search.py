@@ -48,6 +48,26 @@ class AutoSearchEngine:
         Returns:
             Tuple of (site_key, url, html) or (None, None, None) if skipped
         """
+        return self.search_and_select_with_context(search_term, site_keys, None, 
+                                                  search_limit, download_limit, delay)
+    
+    def search_and_select_with_context(self, search_term: str, site_keys: List[str], 
+                                      book_info: dict = None, search_limit: int = 5, 
+                                      download_limit: int = 3, delay: float = 2.0) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Search for candidates across multiple sites and let user select with book context.
+        
+        Args:
+            search_term: Term to search for
+            site_keys: List of site keys to search
+            book_info: Current book information for context display
+            search_limit: Maximum results per site to fetch
+            download_limit: Maximum pages per site to download
+            delay: Delay between requests
+            
+        Returns:
+            Tuple of (site_key, url, html) or (None, None, None) if skipped
+        """
         candidates = []
         driver = None
         
@@ -76,8 +96,8 @@ class AutoSearchEngine:
             log.debug(f"No candidate pages found for search term: {search_term}")
             return None, None, None
         
-        # Let user select from candidates
-        return self._user_select_candidate(candidates, search_term)
+        # Let user select from candidates with book context
+        return self._user_select_candidate(candidates, search_term, book_info)
     
     def _search_single_site(self, driver: webdriver.Chrome, site_key: str, 
                            search_term: str, search_limit: int, download_limit: int, 
@@ -227,8 +247,12 @@ class AutoSearchEngine:
         
         return candidates
     
-    def _user_select_candidate(self, candidates: List[SearchCandidate], search_term: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _user_select_candidate(self, candidates: List[SearchCandidate], search_term: str, book_info: dict = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """Let user select from candidate pages."""
+        
+        # Display book information for context
+        self._display_book_context(search_term, book_info)
+        
         print("\nCandidate pages:")
         for i, candidate in enumerate(candidates, 1):
             print(f"[{i}] {candidate}")
@@ -293,3 +317,40 @@ class AutoSearchEngine:
             
         except Exception as e:
             log.warning(f"Could not save debug content: {e}")
+    
+    def _display_book_context(self, search_term: str, book_info: dict = None):
+        """Display context about the book being processed."""
+        print("\n" + "="*80)
+        print("📚 SELECTING METADATA FOR:")
+        print("="*80)
+        
+        if book_info:
+            # Display available metadata
+            if book_info.get('title'):
+                print(f"📖 Title: {book_info['title']}")
+            if book_info.get('author'):
+                print(f"✍️  Author: {book_info['author']}")
+            if book_info.get('series'):
+                series_info = book_info['series']
+                if book_info.get('volume'):
+                    series_info += f" (Volume {book_info['volume']})"
+                print(f"📚 Series: {series_info}")
+            if book_info.get('narrator'):
+                print(f"🎤 Narrator: {book_info['narrator']}")
+            if book_info.get('publisher'):
+                print(f"🏢 Publisher: {book_info['publisher']}")
+            if book_info.get('year'):
+                print(f"📅 Year: {book_info['year']}")
+            if book_info.get('language'):
+                print(f"🌍 Language: {book_info['language']}")
+            if book_info.get('source'):
+                print(f"📂 Source: {book_info['source']}")
+            
+            # Show folder name if different from title
+            if book_info.get('folder_name') and book_info.get('folder_name') != book_info.get('title'):
+                print(f"📁 Folder: {book_info['folder_name']}")
+        else:
+            # Fallback to search term and folder name
+            print(f"🔍 Search term: {search_term}")
+        
+        print("="*80)

@@ -41,12 +41,32 @@ class ManualSearchHandler:
         Returns:
             Tuple of (site_key, url) or (None, None) if skipped
         """
+        # Extract book info for context
+        book_info = {'folder_name': folder_path.name, 'source': 'folder name'}
+        
+        return self.handle_manual_search_with_context(folder_path, book_info, site_filter)
+    
+    def handle_manual_search_with_context(self, folder_path: Path, book_info: dict = None, site_filter: str = 'all') -> Tuple[Optional[str], Optional[str]]:
+        """
+        Handle manual search process for a folder with context display.
+        
+        Args:
+            folder_path: Path to audiobook folder
+            book_info: Current book information for context
+            site_filter: Site to search ('all' or specific site key)
+            
+        Returns:
+            Tuple of (site_key, url) or (None, None) if skipped
+        """
         if not self.clipboard_available:
             print("Clipboard functionality not available. Please install pyperclip.")
             return None, None
         
         # Generate search term
         search_term = generate_search_term(folder_path)
+        
+        # Display book context
+        self._display_book_context(search_term, book_info)
         
         # Open browser with search
         self._open_search_in_browser(search_term, site_filter)
@@ -125,6 +145,43 @@ class ManualSearchHandler:
         # Restore old clipboard content and return None (skipped)
         pyperclip.copy(clipboard_old)
         return None, None
+    
+    def _display_book_context(self, search_term: str, book_info: dict = None):
+        """Display context about the book being processed."""
+        print("\n" + "="*80)
+        print("📚 MANUAL SEARCH FOR:")
+        print("="*80)
+        
+        if book_info:
+            # Display available metadata
+            if book_info.get('title'):
+                print(f"📖 Title: {book_info['title']}")
+            if book_info.get('author'):
+                print(f"✍️  Author: {book_info['author']}")
+            if book_info.get('series'):
+                series_info = book_info['series']
+                if book_info.get('volume'):
+                    series_info += f" (Volume {book_info['volume']})"
+                print(f"📚 Series: {series_info}")
+            if book_info.get('narrator'):
+                print(f"🎤 Narrator: {book_info['narrator']}")
+            if book_info.get('publisher'):
+                print(f"🏢 Publisher: {book_info['publisher']}")
+            if book_info.get('year'):
+                print(f"📅 Year: {book_info['year']}")
+            if book_info.get('language'):
+                print(f"🌍 Language: {book_info['language']}")
+            if book_info.get('source'):
+                print(f"📂 Source: {book_info['source']}")
+            
+            # Show folder name if different from title
+            if book_info.get('folder_name') and book_info.get('folder_name') != book_info.get('title'):
+                print(f"📁 Folder: {book_info['folder_name']}")
+        else:
+            # Fallback to search term
+            print(f"🔍 Search term: {search_term}")
+        
+        print("="*80)
     
     def _is_valid_url_or_skip(self, text: str) -> bool:
         """Check if text is a valid URL or skip command."""
