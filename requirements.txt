@@ -8,4 +8,7 @@ soupsieve==2.3.2.post1
 tinytag==1.8.1
 urllib3==1.26.14
 mutagen==1.46.0
+python-dotenv==1.0.0
 
+# Optional LLM support
+litellm>=1.0.0

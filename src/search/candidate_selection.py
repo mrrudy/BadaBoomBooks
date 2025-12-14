@@ -13,63 +13,139 @@ from ..models import SearchCandidate
 
 class CandidateSelector:
     """Handles candidate selection logic."""
-    
+
     def __init__(self, enable_ai_selection: bool = False):
         self.enable_ai_selection = enable_ai_selection
+        self.llm_scorer = None
+        self.last_scored_candidates = []  # Store last scoring results for display
+
+        if enable_ai_selection:
+            from .llm_scoring import LLMScorer
+            self.llm_scorer = LLMScorer()
     
-    def select_best_candidate(self, candidates: List[SearchCandidate], 
-                            search_term: str) -> Optional[SearchCandidate]:
+    def select_best_candidate(self, candidates: List[SearchCandidate],
+                            search_term: str,
+                            book_info: dict = None) -> Optional[SearchCandidate]:
         """
         Select the best candidate from a list.
-        
+
         Args:
             candidates: List of search candidates
             search_term: Original search term
-            
+            book_info: Optional book context information
+
         Returns:
             Best candidate or None if none suitable
         """
         if not candidates:
             return None
-        
+
         if len(candidates) == 1:
             return candidates[0]
-        
+
         # Try AI selection if enabled
         if self.enable_ai_selection:
-            ai_choice = self._ai_select_candidate(candidates, search_term)
+            ai_choice = self._ai_select_candidate(candidates, search_term, book_info)
             if ai_choice is not None:
                 return ai_choice
-        
+
         # Fallback to heuristic selection
         return self._heuristic_select_candidate(candidates, search_term)
     
-    def _ai_select_candidate(self, candidates: List[SearchCandidate], 
-                           search_term: str) -> Optional[SearchCandidate]:
+    def _ai_select_candidate(self, candidates: List[SearchCandidate],
+                           search_term: str,
+                           book_info: dict = None) -> Optional[SearchCandidate]:
         """
         Use AI to select the best candidate.
-        
-        This is a placeholder for future AI-powered selection.
-        Could use language models to analyze titles, snippets, and content
-        to determine the best match for the search term.
-        
+
         Args:
             candidates: List of candidates to choose from
             search_term: Original search term
-            
+            book_info: Optional book context information
+
         Returns:
-            Selected candidate or None
+            Selected candidate or None if no good match
         """
-        # TODO: Implement AI-powered candidate selection
-        # This could involve:
-        # - Analyzing title similarity to search term
-        # - Checking snippet content relevance
-        # - Parsing HTML content for additional metadata
-        # - Using fuzzy matching or semantic similarity
-        
-        log.info("AI candidate selection not yet implemented, falling back to heuristics")
-        return None
-    
+        if not self.llm_scorer or not self.llm_scorer.llm_available:
+            log.info("LLM not available, falling back to heuristics")
+            return None
+
+        # Score all candidates using LLM
+        scored_candidates = self.llm_scorer.score_candidates(
+            candidates, search_term, book_info
+        )
+
+        # Apply weights as tiebreaker for similar scores
+        scored_with_weights = self._apply_scraper_weights(scored_candidates)
+
+        # Sort by weighted score (highest first)
+        scored_with_weights.sort(key=lambda x: x[2], reverse=True)
+
+        # Store scores for later display
+        self.last_scored_candidates = scored_with_weights
+
+        # Get best candidate
+        best_candidate, llm_score, final_score = scored_with_weights[0]
+
+        # Define acceptance threshold (0.5 = 50% confidence minimum)
+        ACCEPTANCE_THRESHOLD = 0.5
+
+        if llm_score < ACCEPTANCE_THRESHOLD:
+            log.info(f"Best LLM score ({llm_score:.2f}) below threshold ({ACCEPTANCE_THRESHOLD}), rejecting all")
+            return None
+
+        log.info(f"LLM selected '{best_candidate.title}' with score {llm_score:.2f} (weighted: {final_score:.2f})")
+        return best_candidate
+
+    def _apply_scraper_weights(self, scored_candidates: List[tuple]) -> List[tuple]:
+        """
+        Apply scraper weights as tiebreaker for similar LLM scores.
+
+        When LLM scores are within a quality bracket (0.1 difference), use scraper
+        weights to favor preferred sources (e.g., lubimyczytac over others).
+
+        Args:
+            scored_candidates: List of (candidate, llm_score) tuples
+
+        Returns:
+            List of (candidate, llm_score, final_score) tuples
+        """
+        from ..config import SCRAPER_REGISTRY
+
+        # Quality bracket threshold - scores within this range are considered "similar"
+        SIMILARITY_THRESHOLD = 0.1
+        # Minimum score threshold - don't apply weights if all scores are too low
+        ACCEPTANCE_THRESHOLD = 0.5
+
+        if not scored_candidates:
+            return []
+
+        # Get the best LLM score
+        best_llm_score = max(score for _, score in scored_candidates)
+
+        # Don't apply weights if best score is below acceptance threshold
+        # This prevents selecting a candidate when all scores are 0.0 or very low
+        should_apply_weights = best_llm_score >= ACCEPTANCE_THRESHOLD
+
+        weighted_results = []
+        for candidate, llm_score in scored_candidates:
+            # Get weight for this scraper (default to 1.0 if not specified)
+            weight = SCRAPER_REGISTRY.get(candidate.site_key, {}).get('weight', 1.0)
+
+            # If score is within similarity threshold of best AND above acceptance threshold, apply weight
+            if should_apply_weights and (best_llm_score - llm_score <= SIMILARITY_THRESHOLD):
+                # Apply weight as multiplier (small boost to preserve LLM score primacy)
+                final_score = llm_score * (1.0 + (weight - 1.0) * 0.1)
+                log.debug(f"Applied weight {weight} to '{candidate.site_key}': "
+                         f"LLM={llm_score:.3f} -> Final={final_score:.3f}")
+            else:
+                # Outside quality bracket or scores too low, weight doesn't apply
+                final_score = llm_score
+
+            weighted_results.append((candidate, llm_score, final_score))
+
+        return weighted_results
+
     def _heuristic_select_candidate(self, candidates: List[SearchCandidate], 
                                   search_term: str) -> Optional[SearchCandidate]:
         """

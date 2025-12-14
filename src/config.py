@@ -10,6 +10,16 @@ import sys
 from pathlib import Path
 import logging as log
 
+# === ENCODING CONFIGURATION ===
+# Reconfigure stdout/stderr to handle Unicode properly on Windows
+# This prevents UnicodeEncodeError when printing non-ASCII characters
+if sys.platform == 'win32':
+    import codecs
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
+
 __version__ = 0.60
 
 # === PATHS ===
@@ -24,6 +34,18 @@ else:
 # If still in src, go up one more level
 if root_path.name == 'src':
     root_path = root_path.parent
+
+# Load .env file if it exists
+try:
+    from dotenv import load_dotenv
+    env_file = root_path / '.env'
+    if env_file.exists():
+        load_dotenv(env_file)
+        log.debug(f"Loaded environment variables from {env_file}")
+except ImportError:
+    log.debug("python-dotenv not available, skipping .env file loading")
+except Exception as e:
+    log.debug(f"Error loading .env file: {e}")
 
 config_file = root_path / 'queue.ini'
 debug_file = root_path / 'debug.log'
@@ -42,25 +64,42 @@ SCRAPER_REGISTRY = {
         "search_url": lambda search_term: f"https://duckduckgo.com/?t=ffab&q=site:audible.com {search_term}",
         "scrape_func_name": "api_audible",
         "http_request_func_name": "http_request_audible_api",
-        "preprocess_func_name": "preprocess_audible_url"
+        "preprocess_func_name": "preprocess_audible_url",
+        "weight": 2.0  # Weight for tiebreaking in LLM scoring
     },
     "goodreads": {
-        "domain": "goodreads.com", 
+        "domain": "goodreads.com",
         "url_pattern": r"^http.+goodreads.+book/show/\d+",
         "search_url": lambda search_term: f"https://duckduckgo.com/?t=ffab&q=site:goodreads.com {search_term}",
         "scrape_func_name": "scrape_goodreads",
         "http_request_func_name": "http_request_generic",
-        "preprocess_func_name": None
+        "preprocess_func_name": None,
+        "weight": 1.5  # Weight for tiebreaking in LLM scoring
     },
     "lubimyczytac": {
         "domain": "lubimyczytac.pl",
         "url_pattern": r"^https?://lubimyczytac\.pl/(ksiazka|audiobook)/\d+/.+",
         "search_url": lambda search_term: f"https://duckduckgo.com/?t=ffab&q=site:lubimyczytac.pl {search_term}",
         "scrape_func_name": "scrape_lubimyczytac",
-        "http_request_func_name": "http_request_generic", 
-        "preprocess_func_name": None
+        "http_request_func_name": "http_request_generic",
+        "preprocess_func_name": None,
+        "weight": 3.0  # Weight for tiebreaking in LLM scoring (highest - most favored)
     }
 }
+
+# === LLM CONFIGURATION ===
+def load_llm_config():
+    """Load LLM configuration from environment variables."""
+    import os
+    return {
+        'api_key': os.getenv('LLM_API_KEY'),
+        'model': os.getenv('LLM_MODEL', 'gpt-3.5-turbo'),
+        'base_url': os.getenv('OPENAI_BASE_URL'),  # For local models (LM Studio, Ollama)
+        'max_tokens': int(os.getenv('LLM_MAX_TOKENS', '4096')),  # Maximum tokens for LLM responses
+        'enabled': bool(os.getenv('LLM_API_KEY'))  # Auto-enable if API key present
+    }
+
+LLM_CONFIG = load_llm_config()
 
 # === LOGGING CONFIGURATION ===
 def setup_logging(debug_enabled: bool = False):

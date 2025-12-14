@@ -214,10 +214,15 @@ class ProcessingArgs:
     # === SEARCH OPTIONS ===
     site: str = 'all'
     auto_search: bool = False
+    llm_select: bool = False
+    llm_conn_test: bool = False
     search_limit: int = 5
     download_limit: int = 3
     search_delay: float = 2.0
-    
+
+    # === AUTOMATION ===
+    yolo: bool = False
+
     # === DEBUG ===
     debug: bool = False
     

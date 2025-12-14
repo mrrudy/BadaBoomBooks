@@ -138,3 +138,6 @@ lubimyczytac_page.html
 debug_pages/
 debug_ddg_page.html
 debug_selectors.py
+# Claude AI files
+.claude/
+

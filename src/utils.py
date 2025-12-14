@@ -318,24 +318,68 @@ def normalize_series_volume(volume_str: str) -> str:
     return volume_str.strip()
 
 
+def safe_encode_text(text: str) -> str:
+    """
+    Safely encode text for Windows terminal output.
+    Replaces problematic emojis with ASCII equivalents.
+
+    Args:
+        text: Text that may contain emojis
+
+    Returns:
+        Text with emojis replaced with safe alternatives
+    """
+    # Map emojis to ASCII equivalents for Windows terminal
+    emoji_replacements = {
+        '📚': '[Books]',
+        '📁': '[Folder]',
+        '⚙️': '[Settings]',
+        '📄': '[Files]',
+        '🎵': '[Audio]',
+        '🔍': '[Search]',
+        '✅': '[OK]',
+        '❌': '[X]',
+        '⊘': '[Skip]',
+        '📋': '[Pending]',
+        '📊': '[Stats]',
+        '📈': '[Rate]',
+        '⏱️': '[Time]',
+        '⚡': '[Speed]',
+        '🤖': '[AI]',
+        '📖': '[Book]',
+        '✍️': '[Author]',
+        '🎤': '[Narrator]',
+        '🏢': '[Publisher]',
+        '📅': '[Year]',
+        '🌍': '[Language]',
+        '📂': '[Source]'
+    }
+
+    result = text
+    for emoji, replacement in emoji_replacements.items():
+        result = result.replace(emoji, replacement)
+
+    return result
+
+
 class ProgressTracker:
     """Simple progress tracking utility."""
-    
+
     def __init__(self, total: int, description: str = "Processing"):
         self.total = total
         self.current = 0
         self.description = description
-    
+
     def update(self, increment: int = 1):
         """Update progress counter."""
         self.current += increment
         self.current = min(self.current, self.total)
-    
+
     def get_progress_str(self) -> str:
         """Get progress as string."""
         percentage = (self.current / self.total * 100) if self.total > 0 else 0
         return f"{self.description}: {self.current}/{self.total} ({percentage:.1f}%)"
-    
+
     def is_complete(self) -> bool:
         """Check if progress is complete."""
         return self.current >= self.total

@@ -148,38 +148,39 @@ class ManualSearchHandler:
     
     def _display_book_context(self, search_term: str, book_info: dict = None):
         """Display context about the book being processed."""
+        from ..utils import safe_encode_text
         print("\n" + "="*80)
-        print("📚 MANUAL SEARCH FOR:")
+        print(safe_encode_text("📚 MANUAL SEARCH FOR:"))
         print("="*80)
-        
+
         if book_info:
             # Display available metadata
             if book_info.get('title'):
-                print(f"📖 Title: {book_info['title']}")
+                print(safe_encode_text(f"📖 Title: {book_info['title']}"))
             if book_info.get('author'):
-                print(f"✍️  Author: {book_info['author']}")
+                print(safe_encode_text(f"✍️  Author: {book_info['author']}"))
             if book_info.get('series'):
                 series_info = book_info['series']
                 if book_info.get('volume'):
                     series_info += f" (Volume {book_info['volume']})"
-                print(f"📚 Series: {series_info}")
+                print(safe_encode_text(f"📚 Series: {series_info}"))
             if book_info.get('narrator'):
-                print(f"🎤 Narrator: {book_info['narrator']}")
+                print(safe_encode_text(f"🎤 Narrator: {book_info['narrator']}"))
             if book_info.get('publisher'):
-                print(f"🏢 Publisher: {book_info['publisher']}")
+                print(safe_encode_text(f"🏢 Publisher: {book_info['publisher']}"))
             if book_info.get('year'):
-                print(f"📅 Year: {book_info['year']}")
+                print(safe_encode_text(f"📅 Year: {book_info['year']}"))
             if book_info.get('language'):
-                print(f"🌍 Language: {book_info['language']}")
+                print(safe_encode_text(f"🌍 Language: {book_info['language']}"))
             if book_info.get('source'):
-                print(f"📂 Source: {book_info['source']}")
+                print(safe_encode_text(f"📂 Source: {book_info['source']}"))
             
             # Show folder name if different from title
             if book_info.get('folder_name') and book_info.get('folder_name') != book_info.get('title'):
-                print(f"📁 Folder: {book_info['folder_name']}")
+                print(safe_encode_text(f"📁 Folder: {book_info['folder_name']}"))
         else:
             # Fallback to search term
-            print(f"🔍 Search term: {search_term}")
+            print(safe_encode_text(f"🔍 Search term: {search_term}"))
         
         print("="*80)
     

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 from ..models import BookMetadata, ProcessingResult
+from ..utils import safe_encode_text
 
 
 class OutputFormatter:
@@ -81,40 +82,41 @@ class OutputFormatter:
     def format_book_status(metadata: BookMetadata) -> str:
         """
         Format book processing status.
-        
+
         Args:
             metadata: BookMetadata with status information
-            
+
         Returns:
             Formatted status string
         """
         if metadata.failed:
-            return f"❌ FAILED: {metadata.failed_exception}"
+            result = f"❌ FAILED: {metadata.failed_exception}"
         elif metadata.skip:
-            return "⊘ SKIPPED"
+            result = "⊘ SKIPPED"
         elif metadata.final_output:
-            return f"✅ SUCCESS: {metadata.final_output}"
+            result = f"✅ SUCCESS: {metadata.final_output}"
         else:
-            return "📋 PENDING"
+            result = "📋 PENDING"
+        return safe_encode_text(result)
     
     @staticmethod
     def format_processing_plan(folders: List[Path], args) -> str:
         """
         Format processing plan for display.
-        
+
         Args:
             folders: List of folders to process
             args: Processing arguments
-            
+
         Returns:
             Formatted plan string
         """
         lines = []
         lines.append(f"📚 Books to process: {len(folders)}")
-        
+
         if args.output:
             lines.append(f"📁 Output directory: {args.output}")
-        
+
         # Operations
         operations = []
         if args.copy:
@@ -123,17 +125,17 @@ class OutputFormatter:
             operations.append("Move")
         else:
             operations.append("In-place")
-        
+
         if args.flatten:
             operations.append("Flatten")
         if args.rename:
             operations.append("Rename tracks")
         if args.series:
             operations.append("Series organization")
-        
+
         if operations:
             lines.append(f"⚙️  Operations: {', '.join(operations)}")
-        
+
         # File generation
         files = []
         if args.opf:
@@ -142,41 +144,41 @@ class OutputFormatter:
             files.append("info.txt")
         if args.cover:
             files.append("cover.jpg")
-        
+
         if files:
             lines.append(f"📄 Generate files: {', '.join(files)}")
-        
+
         # Audio processing
         if args.id3_tag:
             lines.append("🎵 Update ID3 tags: Yes")
-        
+
         # Search settings
         search_info = f"🔍 Search: {args.site}"
         if args.auto_search:
             search_info += " (automatic)"
         lines.append(search_info)
-        
-        return "\n".join(lines)
+
+        return safe_encode_text("\n".join(lines))
     
     @staticmethod
     def format_error_report(errors: List[str]) -> str:
         """
         Format error list for display.
-        
+
         Args:
             errors: List of error messages
-            
+
         Returns:
             Formatted error report
         """
         if not errors:
-            return "✅ No errors"
-        
+            return safe_encode_text("✅ No errors")
+
         lines = [f"❌ {len(errors)} error(s) found:"]
         for i, error in enumerate(errors, 1):
             lines.append(f"  {i}. {error}")
-        
-        return "\n".join(lines)
+
+        return safe_encode_text("\n".join(lines))
     
     @staticmethod
     def format_search_results(candidates: List[Dict[str, Any]]) -> str:
@@ -210,65 +212,65 @@ class OutputFormatter:
     def format_file_list(files: List[Path], title: str = "Files") -> str:
         """
         Format file list for display.
-        
+
         Args:
             files: List of file paths
             title: Title for the list
-            
+
         Returns:
             Formatted file list
         """
         if not files:
             return f"{title}: None"
-        
+
         lines = [f"{title} ({len(files)}):"]
-        
+
         # Show first 10 files
         for file_path in files[:10]:
             lines.append(f"  📁 {file_path.name}")
-        
+
         if len(files) > 10:
             lines.append(f"  ... and {len(files) - 10} more")
-        
-        return "\n".join(lines)
+
+        return safe_encode_text("\n".join(lines))
     
     @staticmethod
     def format_statistics(result: ProcessingResult, elapsed_time: float = 0) -> str:
         """
         Format processing statistics.
-        
+
         Args:
             result: ProcessingResult with statistics
             elapsed_time: Total elapsed time in seconds
-            
+
         Returns:
             Formatted statistics
         """
         lines = []
-        
+
         total = result.total_processed()
         success_count = len(result.success_books)
-        failed_count = len(result.failed_books) 
+        failed_count = len(result.failed_books)
         skipped_count = len(result.skipped_books)
-        
+
         lines.append(f"📊 Processing Statistics:")
         lines.append(f"  Total books: {total}")
         lines.append(f"  ✅ Successful: {success_count}")
         lines.append(f"  ❌ Failed: {failed_count}")
         lines.append(f"  ⊘ Skipped: {skipped_count}")
-        
+
         if total > 0:
             success_rate = (success_count / total) * 100
             lines.append(f"  📈 Success rate: {success_rate:.1f}%")
-        
+
         if elapsed_time > 0:
             lines.append(f"  ⏱️  Total time: {OutputFormatter.format_time(elapsed_time)}")
-            
+
             if success_count > 0:
                 avg_time = elapsed_time / success_count
                 lines.append(f"  ⚡ Average per book: {OutputFormatter.format_time(avg_time)}")
-        
-        return "\n".join(lines)
+
+        return safe_encode_text("\n".join(lines))
     
     @staticmethod
     def format_time(seconds: float) -> str:
@@ -366,16 +368,16 @@ class OutputFormatter:
     def format_metadata_comparison(old_metadata: BookMetadata, new_metadata: BookMetadata) -> str:
         """
         Format comparison between old and new metadata.
-        
+
         Args:
             old_metadata: Original metadata
             new_metadata: Updated metadata
-            
+
         Returns:
             Formatted comparison string
         """
         lines = ["📋 Metadata Changes:"]
-        
+
         # Compare key fields
         fields_to_compare = [
             ('title', 'Title'),
@@ -386,23 +388,23 @@ class OutputFormatter:
             ('publishyear', 'Year'),
             ('language', 'Language')
         ]
-        
+
         changes_found = False
-        
+
         for field, label in fields_to_compare:
             old_value = getattr(old_metadata, field, "")
             new_value = getattr(new_metadata, field, "")
-            
+
             if old_value != new_value:
                 changes_found = True
                 lines.append(f"  {label}:")
                 lines.append(f"    Old: {old_value or '(none)'}")
                 lines.append(f"    New: {new_value or '(none)'}")
-        
+
         if not changes_found:
             lines.append("  No changes detected")
-        
-        return "\n".join(lines)
+
+        return safe_encode_text("\n".join(lines))
     
     @staticmethod
     def create_separator(width: int = 80, char: str = "=") -> str:

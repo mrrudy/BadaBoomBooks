@@ -130,14 +130,24 @@ Cheers to the community for providing our content and building our tools!
             help="Specify the site to perform initial searches [audible, goodreads, lubimyczytac, all]"
         )
         parser.add_argument(
-            '--auto-search', 
-            action='store_true', 
+            '--auto-search',
+            action='store_true',
             help='Automatically search and fetch candidate pages for each book'
         )
         parser.add_argument(
-            '--search-limit', 
-            type=int, 
-            default=5, 
+            '--llm-select',
+            action='store_true',
+            help='Enable LLM-based candidate selection (requires LLM_API_KEY environment variable)'
+        )
+        parser.add_argument(
+            '--llm-conn-test',
+            action='store_true',
+            help='Test LLM connection and exit (sends simple ping prompt to verify connectivity)'
+        )
+        parser.add_argument(
+            '--search-limit',
+            type=int,
+            default=5,
             help='Number of search results to fetch per site'
         )
         parser.add_argument(
@@ -147,16 +157,23 @@ Cheers to the community for providing our content and building our tools!
             help='Number of candidate pages to download per site'
         )
         parser.add_argument(
-            '--search-delay', 
-            type=float, 
-            default=2.0, 
+            '--search-delay',
+            type=float,
+            default=2.0,
             help='Delay (seconds) between search/download requests'
         )
-        
+
+        # === AUTOMATION OPTIONS ===
+        parser.add_argument(
+            '--yolo',
+            action='store_true',
+            help='Auto-accept all prompts (processing confirmation, LLM selections, etc.) - YOLO mode'
+        )
+
         # === DEBUG OPTIONS ===
         parser.add_argument(
-            '-d', '--debug', 
-            action='store_true', 
+            '-d', '--debug',
+            action='store_true',
             help='Enable debugging to log file'
         )
         parser.add_argument(
@@ -185,31 +202,36 @@ Cheers to the community for providing our content and building our tools!
             folders=[Path(f) for f in parsed.folders] if parsed.folders else [],
             output=Path(parsed.output) if parsed.output else None,
             book_root=Path(parsed.book_root) if parsed.book_root else None,
-            
+
             # Operation mode
             copy=parsed.copy,
             move=parsed.move,
             dry_run=parsed.dry_run,
-            
+
             # Processing options
             flatten=parsed.flatten,
             rename=parsed.rename,
             series=parsed.series,
             id3_tag=parsed.id3_tag,
-            
+
             # Metadata options
             infotxt=parsed.infotxt,
             opf=parsed.opf,
             cover=parsed.cover,
             from_opf=parsed.from_opf,
-            
+
             # Search options
             site=parsed.site,
             auto_search=parsed.auto_search,
+            llm_select=parsed.llm_select,
+            llm_conn_test=parsed.llm_conn_test,
             search_limit=parsed.search_limit,
             download_limit=parsed.download_limit,
             search_delay=parsed.search_delay,
-            
+
+            # Automation
+            yolo=parsed.yolo,
+
             # Debug
             debug=parsed.debug
         )
@@ -291,49 +313,60 @@ Cheers to the community for providing our content and building our tools!
 =========================================================================================
 """)
     
-    def handle_validation_errors(self, errors: List[str]):
+    def handle_validation_errors(self, errors: List[str], yolo: bool = False):
         """
         Handle validation errors by printing them and exiting.
-        
+
         Args:
             errors: List of error messages
+            yolo: Whether yolo mode is enabled (skip exit prompt)
         """
         if not errors:
             return
-        
+
         print("\nValidation Errors:")
         for error in errors:
             print(f"  - {error}")
-        
+
         print("\nUse --help for usage information.")
-        input("\nPress enter to exit...")
+        if not yolo:
+            input("\nPress enter to exit...")
         sys.exit(1)
     
-    def confirm_processing(self, folders: List[Path], dry_run: bool = False) -> bool:
+    def confirm_processing(self, folders: List[Path], dry_run: bool = False, yolo: bool = False) -> bool:
         """
         Confirm processing with user.
-        
+
         Args:
             folders: List of folders to process
             dry_run: Whether this is a dry run
-            
+            yolo: Whether yolo mode is enabled (auto-accept)
+
         Returns:
-            True if user confirms, False otherwise
+            True if user confirms or yolo mode is enabled, False otherwise
         """
         mode = "DRY RUN" if dry_run else "PROCESSING"
-        
+
         print(f"\n=== {mode} CONFIRMATION ===")
         print(f"Ready to process {len(folders)} folder(s):")
-        
+
         for folder in folders[:10]:  # Show first 10
-            print(f"  - {folder.name}")
-        
+            try:
+                print(f"  - {folder.name}")
+            except UnicodeEncodeError:
+                # Fallback for Windows terminal that can't display special characters
+                print(f"  - {folder.name.encode('ascii', 'replace').decode('ascii')}")
+
         if len(folders) > 10:
             print(f"  ... and {len(folders) - 10} more")
-        
+
         if dry_run:
             print("\nThis is a dry run - no files will be modified.")
-        
+
+        if yolo:
+            print("\n🚀 YOLO mode enabled - auto-accepting...")
+            return True
+
         response = input("\nContinue? (y/N): ").strip().lower()
         return response in ['y', 'yes']
     
