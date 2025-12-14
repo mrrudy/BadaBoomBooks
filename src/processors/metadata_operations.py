@@ -104,7 +104,7 @@ class MetadataProcessor:
         Returns:
             BookMetadata object populated from OPF file
         """
-        metadata = BookMetadata.create_empty(str(opf_path.parent.name))
+        metadata = BookMetadata.create_empty(str(opf_path.parent))
         
         if not opf_path.exists():
             metadata.mark_as_failed(f"OPF file not found: {opf_path}")

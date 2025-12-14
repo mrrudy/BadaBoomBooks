@@ -38,7 +38,8 @@ class BadaBoomBooksApp:
         self.manual_search = ManualSearchHandler()
         
         # Configuration
-        self.config = configparser.ConfigParser()
+        # Use only colon as delimiter to avoid conflicts with base64 '=' padding
+        self.config = configparser.ConfigParser(delimiters=(':',))
         self.config.optionxform = lambda option: option
         self.config['urls'] = {}
     
@@ -454,7 +455,7 @@ class BadaBoomBooksApp:
                 url_or_marker = decode_from_config(value)
                 
                 # Create metadata object
-                metadata = BookMetadata.create_empty(str(folder_path.name), url_or_marker)
+                metadata = BookMetadata.create_empty(str(folder_path), url_or_marker)
                 
                 self.progress.start_book(metadata, i)
                 
