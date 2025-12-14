@@ -1,0 +1,194 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+BadaBoomBooks is an audiobook organization tool that scrapes metadata from multiple sources (Audible, Goodreads, LubimyCzytac.pl) and organizes audiobook collections with proper folder structure, metadata files, and ID3 tags. The project has both a CLI and a modern web interface.
+
+## Common Commands
+
+### Running the Application
+
+**CLI Interface:**
+```bash
+# Basic processing with auto-search
+python BadaBoomBooks.py --auto-search --opf --id3-tag -O "C:\Organized" "C:\Audiobook Folder"
+
+# Complete processing with series organization
+python BadaBoomBooks.py --auto-search --series --opf --infotxt --id3-tag --cover --move -O "T:\Sorted" -R "T:\Incoming"
+
+# Dry run for testing
+python BadaBoomBooks.py --dry-run --auto-search --series --opf "C:\Test Folder"
+
+# Run from modular source
+python src/main.py [arguments]
+```
+
+**Web Interface:**
+```bash
+cd web
+python start_web.py
+# Access at http://localhost:5000
+```
+
+### Development
+
+**Install dependencies:**
+```bash
+pip install -r requirements.txt
+
+# For web interface
+cd web
+pip install -r requirements.txt
+```
+
+**Test imports and module loading:**
+```bash
+python -c "from src.main import BadaBoomBooksApp; print('✅ Imports working')"
+
+# Test web interface imports
+cd web
+python test_imports.py
+```
+
+**Enable debug logging:**
+```bash
+python BadaBoomBooks.py --debug [other arguments]
+```
+
+## Architecture
+
+### Modular Structure
+
+The application uses a **modular architecture** (migrated from legacy monolithic code). Understanding this structure is critical:
+
+```
+src/
+├── main.py                 # Application orchestrator (BadaBoomBooksApp class)
+├── config.py              # SCRAPER_REGISTRY, paths, logging setup
+├── models.py              # BookMetadata, ProcessingArgs, ProcessingResult
+├── utils.py               # Path sanitization, search term generation
+├── ui/                    # CLI, progress reporting, output formatting
+├── search/                # AutoSearchEngine, ManualSearchHandler, CandidateSelector
+├── scrapers/              # Site-specific scrapers (Audible, Goodreads, LubimyCzytac)
+└── processors/            # File, metadata, and audio operations
+```
+
+**Key Design Principles:**
+- **SCRAPER_REGISTRY** in [config.py](src/config.py) is the central registry for all supported sites
+- Each scraper inherits from `BaseScraper` in [scrapers/base.py](src/scrapers/base.py)
+- Processing pipeline: Queue Building → Metadata Scraping → File Organization → Metadata Generation → Audio Tagging
+- All processors support dry-run mode (`--dry-run` flag)
+
+### Web Interface Architecture
+
+The web interface (`web/` directory) is a Flask + SocketIO application that:
+- Uses the same core `src/` modules as the CLI
+- Provides real-time progress via WebSocket
+- Implements interactive candidate selection
+- Runs processing jobs in background threads
+
+**Entry point:** [web/app.py](web/app.py) or [web/start_web.py](web/start_web.py)
+
+### Processing Pipeline
+
+The main processing flow in [src/main.py](src/main.py):
+
+1. **Queue Building Phase** (`_build_processing_queue`):
+   - Extract book context from OPF files or ID3 tags
+   - Perform auto-search or manual search
+   - Store folder→URL mappings in `queue.ini`
+
+2. **Processing Phase** (`_process_queue`):
+   - Read queue from `queue.ini`
+   - For each book: Scrape → Organize → Flatten → Rename → Generate Metadata → Update Tags
+   - Track results in `ProcessingResult`
+
+3. **Metadata Extraction** (`_extract_book_info`):
+   - Tries OPF files first, then ID3 tags, then folder name
+   - Used for displaying context during candidate selection
+
+### Scraper System
+
+**Three active scrapers:**
+1. **AudibleScraper** ([scrapers/audible.py](src/scrapers/audible.py)) - Uses Audible API, requires ASIN extraction
+2. **GoodreadsScraper** ([scrapers/goodreads.py](src/scrapers/goodreads.py)) - Handles Type 1 and Type 2 page formats
+3. **LubimyczytacScraper** ([scrapers/lubimyczytac.py](src/scrapers/lubimyczytac.py)) - Polish site, handles volume ranges
+
+**To add a new scraper:**
+1. Create class in `src/scrapers/new_site.py` inheriting from `BaseScraper`
+2. Add entry to `SCRAPER_REGISTRY` in [config.py](src/config.py)
+3. Implement `scrape_metadata(metadata, response, log)` method
+4. Update imports in [scrapers/__init__.py](src/scrapers/__init__.py)
+
+### Search and Candidate Selection
+
+**Auto-search flow** ([search/auto_search.py](src/search/auto_search.py)):
+- Uses Selenium to search DuckDuckGo with `site:domain.com search_term`
+- Downloads top N result pages
+- Extracts metadata candidates from each page
+- Uses `CandidateSelector` for intelligent selection
+
+**Candidate selection** ([search/candidate_selection.py](src/search/candidate_selection.py)):
+- Scoring based on title/author similarity using difflib
+- Interactive CLI prompts showing book context
+- Web interface shows rich side-by-side comparison
+
+## Configuration Files
+
+- `queue.ini` - Processing queue (folder→URL mappings), auto-generated
+- `template.opf` - OPF template for metadata files
+- `debug.log` - Debug output when `--debug` flag is used
+- `.cursorrules` - Not present (no cursor-specific rules)
+
+## Important Notes
+
+### File Operations
+
+- **Series organization** (`--series`): Creates `Author/Series Name/Volume - Title/` structure
+- **Standard organization**: Creates `Author/Title/` structure
+- **File processors** support copy (`--copy`), move (`--move`), or in-place processing
+- **Path sanitization**: All paths cleaned via `clean_path()` in [utils.py](src/utils.py) - removes invalid characters
+
+### Metadata Processing
+
+- **OPF files** use Calibre-style metadata format for Audiobookshelf compatibility
+- **info.txt** files are formatted for SmartAudioBookPlayer app
+- **ID3 tagging** uses mutagen library, supports MP3/M4A/M4B/FLAC/OGG/WMA
+- **Cover images** downloaded from scraped `cover_url` field
+
+### Web Interface Specifics
+
+- Real-time updates via SocketIO (`socketio.emit()`)
+- Jobs stored in `WebState.jobs` dictionary
+- Candidate selection blocks job until user responds
+- File browser implemented in Flask routes (`/api/browse`, `/api/list_drives`)
+
+### Error Handling
+
+- All processors return boolean success/failure
+- `BookMetadata.mark_as_failed()` sets failure state
+- `ProcessingResult` tracks successes/failures/skipped books
+- Dry-run mode prevents all file system modifications
+
+### Legacy Code
+
+Original monolithic code preserved in `legacy/` folder. All new development uses modular architecture in `src/`.
+
+## Testing Recommendations
+
+When making changes:
+1. Test with `--dry-run` first to verify logic
+2. Test both CLI and web interface if modifying core modules
+3. Verify scraper changes by running with `--debug` and examining `debug.log`
+4. For search changes, check `debug_pages/` folder for saved HTML
+5. Test series organization separately from standard organization
+
+## Windows Considerations
+
+This codebase runs on Windows (working directory shows `C:\Users\rudy\...`):
+- Use `Path` objects from pathlib for cross-platform compatibility
+- File paths in CLI arguments may use backslashes
+- Selenium requires Chrome/Chromium installed
+- Some bash commands may need Windows equivalents (use `dir` instead of `ls`, etc.)
