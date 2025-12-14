@@ -141,3 +141,14 @@ debug_selectors.py
 # Claude AI files
 .claude/
 
+# Temporary development files
+BUGFIX_SUMMARY.md
+CHANGES_VISUAL.md
+COMMIT_MESSAGE.txt
+IMPLEMENTATION_BATCH_SCORING.md
+IMPLEMENTATION_SUMMARY.md
+test_batch_scoring.py
+test_scoring_demo.py
+test_weights.py
+test_zero_score_fix.py
+
