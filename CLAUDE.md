@@ -135,6 +135,13 @@ The main processing flow in [src/main.py](src/main.py):
 - Interactive CLI prompts showing book context
 - Web interface shows rich side-by-side comparison
 
+**Custom URL input** (new feature in [search/auto_search.py](src/search/auto_search.py:298)):
+- Users can provide custom URLs during auto-search candidate selection
+- Supports both full URLs (`https://lubimyczytac.pl/ksiazka/...`) and partial URLs (`lubimyczytac.pl/ksiazka/...`)
+- URLs are validated against `SCRAPER_REGISTRY` patterns before acceptance
+- Dynamically supports all registered scrapers (Audible, Goodreads, LubimyCzytac)
+- Downloads and validates the page before proceeding with scraping
+
 ## Configuration Files
 
 - `queue.ini` - Processing queue (folder→URL mappings), auto-generated

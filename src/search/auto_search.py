@@ -249,41 +249,103 @@ class AutoSearchEngine:
     
     def _user_select_candidate(self, candidates: List[SearchCandidate], search_term: str, book_info: dict = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """Let user select from candidate pages."""
-        
+
         # Display book information for context
         self._display_book_context(search_term, book_info)
-        
+
         print("\nCandidate pages:")
         for i, candidate in enumerate(candidates, 1):
             print(f"[{i}] {candidate}")
             print()
         print("[0] Skip this book")
-        
+        print("\nOr enter a custom URL from a supported site (audible.com, goodreads.com, lubimyczytac.pl)")
+
         # Future: AI selection could be implemented here
         # ai_choice = ai_select_best_candidate(candidates, search_term)
         # if ai_choice is not None:
         #     return candidates[ai_choice].site_key, candidates[ai_choice].url, candidates[ai_choice].html
-        
+
         while True:
+            user_input = input(f"Select [1-{len(candidates)}], 0 to skip, or enter URL: ").strip()
+
+            # Try to parse as number first
             try:
-                choice = int(input(f"Select the best candidate [1-{len(candidates)}] or 0 to skip: "))
+                choice = int(user_input)
                 if choice == 0:
                     log.debug(f"User skipped selection for search term: {search_term}")
                     return None, None, None
                 if 1 <= choice <= len(candidates):
                     selected = candidates[choice-1]
-                    
+
                     # Debug: Save chosen page
                     if self.debug_enabled:
                         self._save_debug_content(selected.html, f"chosen_{selected.site_key}_{selected.title}")
                         print(f"Debug: Saved chosen page to debug folder")
-                    
+
                     log.debug(f"User selected candidate: {selected.url}")
                     return selected.site_key, selected.url, selected.html
-            except (ValueError, IndexError):
-                pass
-            print("Invalid input. Try again.")
-    
+                else:
+                    print(f"Invalid number. Please enter 1-{len(candidates)} or 0 to skip.")
+                    continue
+            except ValueError:
+                # Not a number, try to parse as URL
+                result = self._process_custom_url(user_input)
+                if result:
+                    return result
+                # If _process_custom_url returns None, it already printed error message
+                continue
+
+    def _process_custom_url(self, url_input: str) -> Optional[Tuple[str, str, str]]:
+        """
+        Process a custom URL provided by the user.
+
+        Args:
+            url_input: URL string (with or without http/https prefix)
+
+        Returns:
+            Tuple of (site_key, url, html) if valid, None otherwise
+        """
+        from ..utils import detect_url_site
+
+        # Normalize URL - add https:// if missing
+        normalized_url = url_input
+        if not url_input.startswith(('http://', 'https://')):
+            normalized_url = 'https://' + url_input
+
+        # Validate URL against supported sites
+        site_key = detect_url_site(normalized_url)
+
+        if not site_key:
+            print(f"\n❌ URL not recognized as a supported site.")
+            print(f"Supported sites:")
+            for key, config in SCRAPER_REGISTRY.items():
+                print(f"  - {config['domain']} (pattern: {config['url_pattern']})")
+            print()
+            return None
+
+        # Download the page HTML
+        print(f"\n📥 Downloading page from {SCRAPER_REGISTRY[site_key]['domain']}...")
+        try:
+            response = requests.get(normalized_url, timeout=15)
+            response.raise_for_status()
+            html = response.text
+
+            # Debug: Save custom URL page
+            if self.debug_enabled:
+                self._save_debug_content(html, f"custom_{site_key}")
+                print(f"Debug: Saved custom URL page to debug folder")
+
+            log.debug(f"User provided custom URL: {normalized_url}")
+            print(f"✅ Successfully loaded page from {SCRAPER_REGISTRY[site_key]['domain']}")
+
+            return site_key, normalized_url, html
+
+        except requests.RequestException as e:
+            print(f"\n❌ Failed to download page: {e}")
+            print("Please check the URL and try again.\n")
+            log.error(f"Failed to download custom URL {normalized_url}: {e}")
+            return None
+
     def _save_debug_page(self, driver: webdriver.Chrome, filename_prefix: str):
         """Save current page HTML for debugging."""
         if not self.debug_dir:

@@ -106,6 +106,9 @@ See [`MODULAR_ARCHITECTURE.md`](MODULAR_ARCHITECTURE.md) for detailed documentat
 #### Search Options
 - `-s, --site` - Specify search site (audible/goodreads/lubimyczytac/all)
 - `--auto-search` - Automated search with candidate selection
+  - **Custom URL support**: Enter a URL directly during selection instead of choosing numbered options
+  - Accepts both full URLs (`https://lubimyczytac.pl/ksiazka/...`) and partial URLs (`lubimyczytac.pl/ksiazka/...`)
+  - Validates URL against supported sites before proceeding
 - `--search-limit` - Results per site (default: 5)
 - `--download-limit` - Pages to download per site (default: 3)
 - `--search-delay` - Delay between requests (default: 2.0s)
