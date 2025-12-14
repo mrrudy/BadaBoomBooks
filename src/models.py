@@ -220,6 +220,9 @@ class ProcessingArgs:
     download_limit: int = 3
     search_delay: float = 2.0
 
+    # === AUTOMATION ===
+    yolo: bool = False
+
     # === DEBUG ===
     debug: bool = False
     

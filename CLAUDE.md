@@ -18,6 +18,9 @@ python BadaBoomBooks.py --auto-search --opf --id3-tag -O "C:\Organized" "C:\Audi
 # Complete processing with series organization
 python BadaBoomBooks.py --auto-search --series --opf --infotxt --id3-tag --cover --move -O "T:\Sorted" -R "T:\Incoming"
 
+# YOLO mode - auto-accept all prompts (great for batch processing)
+python BadaBoomBooks.py --auto-search --llm-select --yolo --opf --id3-tag --move -O "T:\Sorted" -R "T:\Incoming"
+
 # Dry run for testing
 python BadaBoomBooks.py --dry-run --auto-search --series --opf "C:\Test Folder"
 
@@ -155,6 +158,15 @@ The main processing flow in [src/main.py](src/main.py):
 - Minimum acceptance threshold: 0.5 (50% confidence)
 - Weight formula: `final_score = llm_score * (1.0 + (weight - 1.0) * 0.1)`
 - Only applies to candidates within quality bracket (0.1 score difference)
+
+**YOLO Mode** (`--yolo` flag):
+- Auto-accepts all user prompts for fully automated batch processing
+- Skips confirmation prompts (processing confirmation, LLM candidate selection)
+- Skips all "Press enter to exit" prompts for unattended operation
+- When used with `--llm-select`: Auto-accepts LLM's top candidate
+- When used without `--llm-select`: Auto-selects first search result candidate
+- Perfect for automated workflows, cron jobs, or large batch processing
+- Example: `python BadaBoomBooks.py --auto-search --llm-select --yolo --opf --id3-tag -O "C:\Output" -R "C:\Input"`
 
 ## Configuration Files
 

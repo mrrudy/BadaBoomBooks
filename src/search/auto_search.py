@@ -23,10 +23,11 @@ from ..utils import wait_with_backoff
 class AutoSearchEngine:
     """Handles automated search across multiple audiobook sites."""
 
-    def __init__(self, debug_enabled: bool = False, enable_ai_selection: bool = False):
+    def __init__(self, debug_enabled: bool = False, enable_ai_selection: bool = False, yolo: bool = False):
         self.debug_enabled = debug_enabled
         self.debug_dir = None
         self.enable_ai_selection = enable_ai_selection
+        self.yolo = yolo
 
         if debug_enabled:
             from ..config import root_path
@@ -280,16 +281,30 @@ class AutoSearchEngine:
                             # Show title for selected candidate
                             print(f"     {candidate.title}")
 
-                # Ask user to confirm AI selection
-                confirm = input("\nAccept this selection? [Y/n]: ").strip().lower()
-                if confirm in ('', 'y', 'yes'):
-                    log.debug(f"User confirmed AI selection: {ai_selected.url}")
+                # Ask user to confirm AI selection (or auto-accept in yolo mode)
+                if self.yolo:
+                    print("\n🚀 YOLO mode enabled - auto-accepting LLM selection...")
+                    log.debug(f"YOLO mode: Auto-accepted AI selection: {ai_selected.url}")
                     return ai_selected.site_key, ai_selected.url, ai_selected.html
                 else:
-                    print("AI selection rejected, showing all candidates...")
+                    confirm = input("\nAccept this selection? [Y/n]: ").strip().lower()
+                    if confirm in ('', 'y', 'yes'):
+                        log.debug(f"User confirmed AI selection: {ai_selected.url}")
+                        return ai_selected.site_key, ai_selected.url, ai_selected.html
+                    else:
+                        print("AI selection rejected, showing all candidates...")
 
         # Display book information for context
         self._display_book_context(search_term, book_info)
+
+        # If yolo mode is enabled and no AI selection, auto-select first candidate
+        if self.yolo:
+            print("\n🚀 YOLO mode enabled - auto-selecting first candidate...")
+            selected = candidates[0]
+            print(f"   Selected: [{selected.site_key}] {selected.title}")
+            print(f"   URL: {selected.url}")
+            log.debug(f"YOLO mode: Auto-selected first candidate: {selected.url}")
+            return selected.site_key, selected.url, selected.html
 
         print("\nCandidate pages:")
         for i, candidate in enumerate(candidates, 1):

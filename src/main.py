@@ -67,7 +67,7 @@ class BadaBoomBooksApp:
             validation_errors = self.cli.validate_args(processing_args)
 
             if validation_errors:
-                self.cli.handle_validation_errors(validation_errors)
+                self.cli.handle_validation_errors(validation_errors, processing_args.yolo)
                 return 1
 
             # Setup environment and logging
@@ -85,15 +85,16 @@ class BadaBoomBooksApp:
             
             if not folders:
                 print("No audiobook folders found to process.")
-                input("Press enter to exit...")
+                if not processing_args.yolo:
+                    input("Press enter to exit...")
                 return 1
-            
+
             # Show processing plan
             plan = OutputFormatter.format_processing_plan(folders, processing_args)
             print(f"\n{plan}")
-            
+
             # Confirm processing
-            if not self.cli.confirm_processing(folders, processing_args.dry_run):
+            if not self.cli.confirm_processing(folders, processing_args.dry_run, processing_args.yolo):
                 print("Processing cancelled by user.")
                 return 0
             
@@ -117,7 +118,8 @@ class BadaBoomBooksApp:
         if args.auto_search:
             self.auto_search = AutoSearchEngine(
                 debug_enabled=args.debug,
-                enable_ai_selection=args.llm_select
+                enable_ai_selection=args.llm_select,
+                yolo=args.yolo
             )
     
     def _discover_folders(self, args: ProcessingArgs) -> List[Path]:
@@ -163,11 +165,13 @@ class BadaBoomBooksApp:
             # Determine exit code
             if self.result.has_failures():
                 print("\n⚠️  Some books failed to process. Check the log for details.")
-                input("Press enter to exit...")
+                if not args.yolo:
+                    input("Press enter to exit...")
                 return 1
             else:
                 print("\n✅ Processing completed successfully!")
-                input("Press enter to exit...")
+                if not args.yolo:
+                    input("Press enter to exit...")
                 return 0
                 
         except Exception as e:
