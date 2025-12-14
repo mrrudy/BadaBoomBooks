@@ -266,6 +266,20 @@ class AutoSearchEngine:
                 print(f"   URL: {ai_selected.url}")
                 print(f"   Site: {ai_selected.site_key}")
 
+                # Display LLM scores for all candidates
+                if hasattr(self.candidate_selector, 'last_scored_candidates') and self.candidate_selector.last_scored_candidates:
+                    print("\n   LLM Scores for all candidates:")
+                    for candidate, llm_score, final_score in self.candidate_selector.last_scored_candidates:
+                        is_selected = (candidate == ai_selected)
+                        marker = safe_encode_text(" ← SELECTED") if is_selected else ""
+                        weight_info = ""
+                        if abs(llm_score - final_score) > 0.001:  # Weight was applied
+                            weight_info = f" (weighted: {final_score:.3f})"
+                        print(f"   - [{candidate.site_key}] {llm_score:.3f}{weight_info}{marker}")
+                        if is_selected:
+                            # Show title for selected candidate
+                            print(f"     {candidate.title}")
+
                 # Ask user to confirm AI selection
                 confirm = input("\nAccept this selection? [Y/n]: ").strip().lower()
                 if confirm in ('', 'y', 'yes'):

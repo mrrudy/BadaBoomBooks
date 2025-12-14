@@ -48,7 +48,7 @@ class LLMScorer:
                         search_term: str,
                         book_info: dict = None) -> List[Tuple[SearchCandidate, float]]:
         """
-        Score all candidates using LLM.
+        Score all candidates using LLM in a single batch prompt.
 
         Args:
             candidates: List of search candidates
@@ -61,12 +61,55 @@ class LLMScorer:
         if not self.llm_available:
             return [(c, 0.0) for c in candidates]
 
-        scored = []
-        for candidate in candidates:
-            score = self._score_single_candidate(candidate, search_term, book_info)
-            scored.append((candidate, score))
+        # Use batch scoring (all candidates in one prompt for better comparison)
+        return self._score_candidates_batch(candidates, search_term, book_info)
 
-        return scored
+    def _score_candidates_batch(self, candidates: List[SearchCandidate],
+                                search_term: str,
+                                book_info: dict = None) -> List[Tuple[SearchCandidate, float]]:
+        """
+        Score all candidates in a single batch prompt for better comparison.
+
+        Args:
+            candidates: List of search candidates
+            search_term: Original search term
+            book_info: Optional book context
+
+        Returns:
+            List of (candidate, score) tuples
+        """
+        try:
+            import litellm
+
+            prompt = self._build_batch_scoring_prompt(candidates, search_term, book_info)
+
+            response = litellm.completion(
+                model=LLM_CONFIG['model'],
+                api_key=LLM_CONFIG['api_key'],
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,  # Higher temperature for reasoning and comparison
+                max_tokens=LLM_CONFIG.get('max_tokens', 4096)
+            )
+
+            # Extract scores from response
+            response_text = response.choices[0].message.content.strip()
+            scores = self._parse_batch_scores(response_text, len(candidates))
+
+            # Pair candidates with scores
+            scored = []
+            for i, candidate in enumerate(candidates):
+                score = scores[i] if i < len(scores) else 0.0
+                scored.append((candidate, score))
+                log.debug(f"LLM batch scored '{candidate.title}' ({candidate.site_key}) as {score:.2f}")
+
+            return scored
+
+        except ImportError:
+            log.debug("litellm not available for scoring")
+            return [(c, 0.0) for c in candidates]
+        except Exception as e:
+            log.warning(f"LLM batch scoring failed: {e}")
+            return [(c, 0.0) for c in candidates]
 
     def _score_single_candidate(self, candidate: SearchCandidate,
                                 search_term: str,
@@ -92,7 +135,7 @@ class LLMScorer:
                 api_key=LLM_CONFIG['api_key'],
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,  # Low temperature for consistent scoring
-                max_tokens=50  # Just need a number
+                max_tokens=LLM_CONFIG.get('max_tokens', 4096)  # Configurable, default 4096
             )
 
             # Extract score from response
@@ -159,6 +202,165 @@ Return ONLY a number between 0.0 and 1.0 where:
 Score:"""
 
         return prompt
+
+    def _build_batch_scoring_prompt(self, candidates: List[SearchCandidate],
+                                    search_term: str,
+                                    book_info: dict = None) -> str:
+        """
+        Build prompt for scoring all candidates in one batch.
+
+        Args:
+            candidates: List of search candidates
+            search_term: Original search term
+            book_info: Optional book context
+
+        Returns:
+            Prompt string for LLM
+        """
+        context = f"Search term: {search_term}\n\n"
+
+        if book_info:
+            context += "Book information (what we're looking for):\n"
+            if book_info.get('title'):
+                context += f"  Title: {book_info['title']}\n"
+            if book_info.get('author'):
+                context += f"  Author: {book_info['author']}\n"
+            if book_info.get('series'):
+                context += f"  Series: {book_info['series']}"
+                if book_info.get('volume'):
+                    context += f" (Volume {book_info['volume']})"
+                context += "\n"
+            if book_info.get('narrator'):
+                context += f"  Narrator: {book_info['narrator']}\n"
+            if book_info.get('language'):
+                context += f"  Language: {book_info['language']}\n"
+
+        # Build candidate list
+        candidates_text = ""
+        for i, candidate in enumerate(candidates, 1):
+            # Truncate snippet to avoid token limits
+            snippet = candidate.snippet[:200] if candidate.snippet else "No description available"
+            candidates_text += f"\nCandidate {i}:\n"
+            candidates_text += f"  Source: {candidate.site_key}\n"
+            candidates_text += f"  Title: {candidate.title}\n"
+            candidates_text += f"  Description: {snippet}\n"
+
+        prompt = f"""You are helping to match audiobook metadata. Compare the search results below to find the EXACT book we're looking for.
+
+{context}
+CANDIDATES TO EVALUATE:
+{candidates_text}
+
+SCORING CRITERIA (in order of importance):
+
+1. PERFECT MATCH (1.0):
+   - EXACT title match (same language, same edition)
+   - Same author
+   - Same narrator (if known)
+   - CRITICAL: Must be the EXACT book, not just same series
+
+2. VERY GOOD MATCH (0.7-0.9):
+   - Very similar title (minor differences in subtitle or edition)
+   - Same author
+   - Language matches
+
+3. POSSIBLE MATCH (0.4-0.6):
+   - Similar title but uncertain
+   - Same author but different edition or format
+
+4. POOR MATCH (0.0-0.3):
+   - Wrong book from same series (this is NOT good enough!)
+   - Wrong language
+   - Different book by same author
+   - Completely unrelated
+
+IMPORTANT RULES:
+- Being "part of the same series" is NOT a match if it's a different volume
+- Same language is a strong positive indicator
+- Exact title match in the correct language is the best indicator
+- It is COMPLETELY ACCEPTABLE to score all candidates as 0.0 if none match
+- When in doubt, score LOW - false negatives are better than false positives
+
+RESPONSE FORMAT:
+Return ONLY the scores for each candidate, one per line:
+Candidate 1: <score>
+Candidate 2: <score>
+Candidate 3: <score>
+...
+
+Each score must be a number between 0.0 and 1.0.
+
+SCORES:"""
+
+        return prompt
+
+    def _parse_batch_scores(self, response_text: str, expected_count: int) -> List[float]:
+        """
+        Parse scores from batch LLM response.
+
+        Args:
+            response_text: Raw LLM response with multiple scores
+            expected_count: Number of candidates scored
+
+        Returns:
+            List of scores (0.0-1.0), padded with 0.0 if needed
+        """
+        scores = []
+
+        # Look for patterns like "Candidate 1: 0.85" or "1: 0.85" or "0.85"
+        lines = response_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Try different patterns in order of specificity
+            # Pattern 1: "Candidate N: 0.85" - extract the score after the colon
+            match = re.search(r'[Cc]andidate\s+\d+\s*:\s*([0-9]*\.?[0-9]+)', line)
+            if match:
+                try:
+                    score = float(match.group(1))
+                    # Clamp to 0-1 range
+                    score = max(0.0, min(1.0, score))
+                    scores.append(score)
+                    continue
+                except ValueError:
+                    pass
+
+            # Pattern 2: "N: 0.85" - number followed by colon and score
+            match = re.search(r'^\d+\s*:\s*([0-9]*\.?[0-9]+)', line)
+            if match:
+                try:
+                    score = float(match.group(1))
+                    score = max(0.0, min(1.0, score))
+                    scores.append(score)
+                    continue
+                except ValueError:
+                    pass
+
+            # Pattern 3: Just a number on its own line (0.85)
+            match = re.search(r'^([0-9]*\.?[0-9]+)$', line)
+            if match:
+                try:
+                    score = float(match.group(1))
+                    score = max(0.0, min(1.0, score))
+                    scores.append(score)
+                    continue
+                except ValueError:
+                    pass
+
+        # If we didn't get enough scores, pad with 0.0
+        while len(scores) < expected_count:
+            scores.append(0.0)
+            log.warning(f"Missing score in batch response, padding with 0.0")
+
+        # If we got too many scores, truncate
+        if len(scores) > expected_count:
+            log.warning(f"Got {len(scores)} scores but expected {expected_count}, truncating")
+            scores = scores[:expected_count]
+
+        log.debug(f"Parsed {len(scores)} scores from batch response: {scores}")
+        return scores
 
     def _parse_score(self, score_text: str) -> float:
         """

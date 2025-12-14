@@ -1,0 +1,57 @@
+Add scraper weights and LLM score transparency
+
+Implements a weighted scoring system for LLM-based candidate selection
+with full transparency into scoring decisions.
+
+Features:
+- Scraper weights as tiebreaker when LLM scores are similar (within 0.1)
+- LubimyCzytac favored with highest weight (3.0) for best Polish metadata
+- Display all LLM scores and applied weights to user before confirmation
+- Only applies weights to candidates in same quality bracket
+- Preserves LLM score primacy for clear winners
+
+Changes:
+- src/config.py: Added 'weight' field to SCRAPER_REGISTRY
+  * lubimyczytac: 3.0 (highest - most favored)
+  * audible: 2.0 (medium)
+  * goodreads: 1.5 (lowest)
+
+- src/search/candidate_selection.py:
+  * Added last_scored_candidates storage for display
+  * Added _apply_scraper_weights() method
+  * Updated _ai_select_candidate() to apply weights and store scores
+  * Weight formula: final_score = llm_score * (1.0 + (weight - 1.0) * 0.1)
+
+- src/search/auto_search.py:
+  * Enhanced AI selection display to show all LLM scores
+  * Shows weighted scores when weights were applied
+  * Clear marker for selected candidate
+  * Displays title of selected candidate for context
+
+Documentation:
+- SCRAPER_WEIGHTS.md: Comprehensive guide to weight system
+- IMPLEMENTATION_SUMMARY.md: Technical implementation details
+- CHANGES_VISUAL.md: Visual guide with diagrams
+- QUICK_REFERENCE.md: User-friendly quick reference
+- CLAUDE.md: Updated with LLM selection details
+- test_weights.py: Quick weight configuration test
+- test_scoring_demo.py: Demonstration of weight application
+
+Example output:
+  🤖 LLM Auto-selected: Wszystkie systemy w normie
+     Site: lubimyczytac
+
+     LLM Scores for all candidates:
+     - [lubimyczytac] 0.860 (weighted: 1.032) ← SELECTED
+       Wszystkie systemy w normie (Murderbot Diaries #1)
+     - [audible] 0.870 (weighted: 0.957)
+     - [goodreads] 0.850 (weighted: 0.892)
+
+  Accept this selection? [Y/n]:
+
+Benefits:
+- Intelligent tiebreaking favors preferred metadata sources
+- Full transparency helps users make informed decisions
+- Configurable weights allow easy preference adjustment
+- Safe fallback: only applies to similar scores (0.1 bracket)
+- LubimyCzytac wins ties for superior Polish audiobook metadata

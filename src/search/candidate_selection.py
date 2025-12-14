@@ -17,6 +17,7 @@ class CandidateSelector:
     def __init__(self, enable_ai_selection: bool = False):
         self.enable_ai_selection = enable_ai_selection
         self.llm_scorer = None
+        self.last_scored_candidates = []  # Store last scoring results for display
 
         if enable_ai_selection:
             from .llm_scoring import LLMScorer
@@ -74,22 +75,77 @@ class CandidateSelector:
             candidates, search_term, book_info
         )
 
-        # Sort by LLM score (highest first)
-        scored_candidates.sort(key=lambda x: x[1], reverse=True)
+        # Apply weights as tiebreaker for similar scores
+        scored_with_weights = self._apply_scraper_weights(scored_candidates)
+
+        # Sort by weighted score (highest first)
+        scored_with_weights.sort(key=lambda x: x[2], reverse=True)
+
+        # Store scores for later display
+        self.last_scored_candidates = scored_with_weights
 
         # Get best candidate
-        best_candidate, best_score = scored_candidates[0]
+        best_candidate, llm_score, final_score = scored_with_weights[0]
 
         # Define acceptance threshold (0.5 = 50% confidence minimum)
         ACCEPTANCE_THRESHOLD = 0.5
 
-        if best_score < ACCEPTANCE_THRESHOLD:
-            log.info(f"Best LLM score ({best_score:.2f}) below threshold ({ACCEPTANCE_THRESHOLD}), rejecting all")
+        if llm_score < ACCEPTANCE_THRESHOLD:
+            log.info(f"Best LLM score ({llm_score:.2f}) below threshold ({ACCEPTANCE_THRESHOLD}), rejecting all")
             return None
 
-        log.info(f"LLM selected '{best_candidate.title}' with score {best_score:.2f}")
+        log.info(f"LLM selected '{best_candidate.title}' with score {llm_score:.2f} (weighted: {final_score:.2f})")
         return best_candidate
-    
+
+    def _apply_scraper_weights(self, scored_candidates: List[tuple]) -> List[tuple]:
+        """
+        Apply scraper weights as tiebreaker for similar LLM scores.
+
+        When LLM scores are within a quality bracket (0.1 difference), use scraper
+        weights to favor preferred sources (e.g., lubimyczytac over others).
+
+        Args:
+            scored_candidates: List of (candidate, llm_score) tuples
+
+        Returns:
+            List of (candidate, llm_score, final_score) tuples
+        """
+        from ..config import SCRAPER_REGISTRY
+
+        # Quality bracket threshold - scores within this range are considered "similar"
+        SIMILARITY_THRESHOLD = 0.1
+        # Minimum score threshold - don't apply weights if all scores are too low
+        ACCEPTANCE_THRESHOLD = 0.5
+
+        if not scored_candidates:
+            return []
+
+        # Get the best LLM score
+        best_llm_score = max(score for _, score in scored_candidates)
+
+        # Don't apply weights if best score is below acceptance threshold
+        # This prevents selecting a candidate when all scores are 0.0 or very low
+        should_apply_weights = best_llm_score >= ACCEPTANCE_THRESHOLD
+
+        weighted_results = []
+        for candidate, llm_score in scored_candidates:
+            # Get weight for this scraper (default to 1.0 if not specified)
+            weight = SCRAPER_REGISTRY.get(candidate.site_key, {}).get('weight', 1.0)
+
+            # If score is within similarity threshold of best AND above acceptance threshold, apply weight
+            if should_apply_weights and (best_llm_score - llm_score <= SIMILARITY_THRESHOLD):
+                # Apply weight as multiplier (small boost to preserve LLM score primacy)
+                final_score = llm_score * (1.0 + (weight - 1.0) * 0.1)
+                log.debug(f"Applied weight {weight} to '{candidate.site_key}': "
+                         f"LLM={llm_score:.3f} -> Final={final_score:.3f}")
+            else:
+                # Outside quality bracket or scores too low, weight doesn't apply
+                final_score = llm_score
+
+            weighted_results.append((candidate, llm_score, final_score))
+
+        return weighted_results
+
     def _heuristic_select_candidate(self, candidates: List[SearchCandidate], 
                                   search_term: str) -> Optional[SearchCandidate]:
         """

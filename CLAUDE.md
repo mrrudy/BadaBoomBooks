@@ -131,16 +131,30 @@ The main processing flow in [src/main.py](src/main.py):
 - Uses `CandidateSelector` for intelligent selection
 
 **Candidate selection** ([search/candidate_selection.py](src/search/candidate_selection.py)):
-- Scoring based on title/author similarity using difflib
+- **LLM-based selection** (`--llm-select` flag): Uses AI to score candidates (0.0-1.0 scale)
+- **Scraper weights**: Tiebreaker system favors preferred sources when LLM scores are similar (within 0.1)
+  - LubimyCzytac: 3.0 (highest - most favored)
+  - Audible: 2.0 (medium)
+  - Goodreads: 1.5 (lowest)
+- **Score transparency**: Displays all LLM scores and applied weights to user before confirmation
+- **Heuristic fallback**: Title/author similarity using difflib if LLM unavailable
 - Interactive CLI prompts showing book context
 - Web interface shows rich side-by-side comparison
 
-**Custom URL input** (new feature in [search/auto_search.py](src/search/auto_search.py:298)):
+**Custom URL input** (feature in [search/auto_search.py](src/search/auto_search.py:298)):
 - Users can provide custom URLs during auto-search candidate selection
 - Supports both full URLs (`https://lubimyczytac.pl/ksiazka/...`) and partial URLs (`lubimyczytac.pl/ksiazka/...`)
 - URLs are validated against `SCRAPER_REGISTRY` patterns before acceptance
 - Dynamically supports all registered scrapers (Audible, Goodreads, LubimyCzytac)
 - Downloads and validates the page before proceeding with scraping
+
+**LLM Selection Details** (see [SCRAPER_WEIGHTS.md](SCRAPER_WEIGHTS.md)):
+- Configured via `.env` file: `LLM_API_KEY`, `LLM_MODEL`, `OPENAI_BASE_URL`
+- Supports OpenAI, Anthropic, local models (LM Studio, Ollama) via litellm
+- Test connection with: `python BadaBoomBooks.py --llm-conn-test`
+- Minimum acceptance threshold: 0.5 (50% confidence)
+- Weight formula: `final_score = llm_score * (1.0 + (weight - 1.0) * 0.1)`
+- Only applies to candidates within quality bracket (0.1 score difference)
 
 ## Configuration Files
 
