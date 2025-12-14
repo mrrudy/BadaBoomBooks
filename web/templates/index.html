@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BadaBoomBooks Web Interface</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-vinyl-fill me-2"></i>
+                BadaBoomBooks
+                <span class="badge bg-light text-primary ms-2">v{{ version }}</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 d-md-block bg-light sidebar">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#dashboard" onclick="showSection('dashboard')">
+                                <i class="bi bi-speedometer2 me-2"></i>Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#browser" onclick="showSection('browser')">
+                                <i class="bi bi-folder me-2"></i>Browse Files
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#processing" onclick="showSection('processing')">
+                                <i class="bi bi-gear me-2"></i>Processing Options
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#jobs" onclick="showSection('jobs')">
+                                <i class="bi bi-list-task me-2"></i>Active Jobs
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <!-- Dashboard Section -->
+                <div id="dashboard" class="content-section">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">
+                            <i class="bi bi-vinyl-fill text-primary me-2"></i>
+                            BadaBoomBooks Dashboard
+                        </h1>
+                    </div>
+
+                    <!-- Welcome Card -->
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <div class="card mb-4">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <i class="bi bi-book-half me-2"></i>
+                                        Welcome to BadaBoomBooks Web Interface
+                                    </h5>
+                                    <p class="card-text">
+                                        Organize your audiobook collection with automated metadata scraping, 
+                                        series organization, and comprehensive file management.
+                                    </p>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <button class="btn btn-primary btn-lg w-100" onclick="showSection('browser')">
+                                                <i class="bi bi-folder-plus me-2"></i>
+                                                Start Organizing
+                                            </button>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <button class="btn btn-outline-secondary btn-lg w-100" onclick="showSection('jobs')">
+                                                <i class="bi bi-list-task me-2"></i>
+                                                View Jobs
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Features Grid -->
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="bi bi-search text-primary me-2"></i>
+                                        Automated Search
+                                    </h6>
+                                    <p class="card-text">
+                                        Automatically search multiple audiobook sites and select the best metadata matches.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="bi bi-collection text-success me-2"></i>
+                                        Series Organization
+                                    </h6>
+                                    <p class="card-text">
+                                        Organize books by author and series with proper volume numbering and structure.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="bi bi-tags text-warning me-2"></i>
+                                        Metadata Management
+                                    </h6>
+                                    <p class="card-text">
+                                        Generate OPF files, update ID3 tags, and download cover images automatically.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Browser Section -->
+                <div id="browser" class="content-section" style="display: none;">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">
+                            <i class="bi bi-folder me-2"></i>
+                            Browse Audiobook Folders
+                        </h1>
+                    </div>
+
+                    <!-- File Browser -->
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="d-flex align-items-center flex-grow-1">
+                                            <span class="me-2">Path:</span>
+                                            <input type="text" class="form-control form-control-sm me-2" 
+                                                   id="manual-path" placeholder="Enter path manually..." 
+                                                   onkeypress="handlePathInput(event)">
+                                            <span id="current-path" class="text-muted">/</span>
+                                        </div>
+                                        <div>
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="showDrives()">
+                                                <i class="bi bi-hdd"></i> Drives
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="goUp()">
+                                                <i class="bi bi-arrow-up"></i> Up
+                                            </button>
+                                            <button class="btn btn-outline-primary btn-sm" onclick="refreshBrowser()">
+                                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div id="file-list" class="list-group list-group-flush">
+                                        <!-- Files will be loaded here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Selected Folders -->
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-check-square me-2"></i>
+                                        Selected Folders
+                                        <span class="badge bg-primary" id="selected-count">0</span>
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="selected-folders" class="mb-3">
+                                        <p class="text-muted">No folders selected</p>
+                                    </div>
+                                    <button class="btn btn-success w-100" onclick="showSection('processing')" disabled id="process-btn">
+                                        <i class="bi bi-play-circle me-2"></i>
+                                        Process Selected
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Processing Options Section -->
+                <div id="processing" class="content-section" style="display: none;">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">
+                            <i class="bi bi-gear me-2"></i>
+                            Processing Options
+                        </h1>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <!-- Processing Options Form -->
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Configure Processing Options</h6>
+                                </div>
+                                <div class="card-body">
+                                    <form id="processing-form">
+                                        <!-- Search Options -->
+                                        <div class="mb-4">
+                                            <h6 class="text-primary">Search Options</h6>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="auto-search" checked>
+                                                        <label class="form-check-label" for="auto-search">
+                                                            <i class="bi bi-search me-1"></i>
+                                                            Automatic Search
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <select class="form-select" id="search-site">
+                                                        <option value="all">All Sites</option>
+                                                        <option value="audible">Audible Only</option>
+                                                        <option value="goodreads">Goodreads Only</option>
+                                                        <option value="lubimyczytac">LubimyCzytac Only</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Organization Options -->
+                                        <div class="mb-4">
+                                            <h6 class="text-success">Organization Options</h6>
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="series-org" checked>
+                                                        <label class="form-check-label" for="series-org">
+                                                            <i class="bi bi-collection me-1"></i>
+                                                            Series Organization
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="flatten">
+                                                        <label class="form-check-label" for="flatten">
+                                                            <i class="bi bi-list me-1"></i>
+                                                            Flatten Folders
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="rename">
+                                                        <label class="form-check-label" for="rename">
+                                                            <i class="bi bi-pencil me-1"></i>
+                                                            Rename Tracks
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Metadata Options -->
+                                        <div class="mb-4">
+                                            <h6 class="text-warning">Metadata Options</h6>
+                                            <div class="row">
+                                                <div class="col-md-3">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="opf" checked>
+                                                        <label class="form-check-label" for="opf">
+                                                            <i class="bi bi-file-earmark-text me-1"></i>
+                                                            Generate OPF
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="id3-tags" checked>
+                                                        <label class="form-check-label" for="id3-tags">
+                                                            <i class="bi bi-tags me-1"></i>
+                                                            Update ID3 Tags
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="info-txt">
+                                                        <label class="form-check-label" for="info-txt">
+                                                            <i class="bi bi-info-circle me-1"></i>
+                                                            Generate Info.txt
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="cover">
+                                                        <label class="form-check-label" for="cover">
+                                                            <i class="bi bi-image me-1"></i>
+                                                            Download Covers
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Action Buttons -->
+                                        <div class="d-flex gap-2">
+                                            <button type="button" class="btn btn-success" onclick="startProcessing()">
+                                                <i class="bi bi-play-circle me-2"></i>
+                                                Start Processing
+                                            </button>
+                                            <button type="button" class="btn btn-warning" onclick="previewChanges()">
+                                                <i class="bi bi-eye me-2"></i>
+                                                Preview Changes
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Selected Folders Summary -->
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-list-check me-2"></i>
+                                        Processing Summary
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="processing-summary">
+                                        <p class="text-muted">Select folders to see processing summary</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Jobs Section -->
+                <div id="jobs" class="content-section" style="display: none;">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">
+                            <i class="bi bi-list-task me-2"></i>
+                            Active Jobs
+                        </h1>
+                        <button class="btn btn-outline-secondary" onclick="refreshJobs()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>
+                            Refresh
+                        </button>
+                    </div>
+
+                    <div id="jobs-list">
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-hourglass-split fs-1"></i>
+                            <p class="mt-3">No active jobs</p>
+                            <button class="btn btn-primary" onclick="showSection('browser')">
+                                <i class="bi bi-plus me-2"></i>
+                                Start New Job
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Candidate Selection Modal -->
+    <div class="modal fade" id="candidateModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-search me-2"></i>
+                        Select Best Metadata Candidate
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <!-- Book Context -->
+                    <div id="book-context" class="alert alert-info">
+                        <!-- Book info will be displayed here -->
+                    </div>
+                    
+                    <!-- Candidates -->
+                    <div id="candidates-list">
+                        <!-- Candidates will be displayed here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="skipCurrentBook()">
+                        <i class="bi bi-skip-end me-2"></i>
+                        Skip This Book
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Job Progress Modal -->
+    <div class="modal fade" id="progressModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-gear-fill me-2"></i>
+                        Processing Audiobooks
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span id="progress-text">Initializing...</span>
+                            <span id="progress-percentage">0%</span>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div id="current-book" class="mb-3">
+                        <strong>Current:</strong> <span id="current-book-name">-</span>
+                    </div>
+                    <div id="processing-log" class="border rounded p-3" style="height: 300px; overflow-y: auto; background-color: #f8f9fa;">
+                        <!-- Processing logs will appear here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" id="cancel-job-btn" onclick="cancelJob()">
+                        <i class="bi bi-stop-circle me-2"></i>
+                        Cancel Job
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="close-progress-btn" onclick="closeProgressModal()" style="display: none;">
+                        <i class="bi bi-x me-2"></i>
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
