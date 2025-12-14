@@ -22,15 +22,20 @@ from ..utils import wait_with_backoff
 
 class AutoSearchEngine:
     """Handles automated search across multiple audiobook sites."""
-    
-    def __init__(self, debug_enabled: bool = False):
+
+    def __init__(self, debug_enabled: bool = False, enable_ai_selection: bool = False):
         self.debug_enabled = debug_enabled
         self.debug_dir = None
-        
+        self.enable_ai_selection = enable_ai_selection
+
         if debug_enabled:
             from ..config import root_path
             self.debug_dir = root_path / 'debug_pages'
             self.debug_dir.mkdir(exist_ok=True)
+
+        # Initialize candidate selector with AI if enabled
+        from .candidate_selection import CandidateSelector
+        self.candidate_selector = CandidateSelector(enable_ai_selection)
     
     def search_and_select(self, search_term: str, site_keys: List[str], 
                          search_limit: int = 5, download_limit: int = 3, 
@@ -248,7 +253,26 @@ class AutoSearchEngine:
         return candidates
     
     def _user_select_candidate(self, candidates: List[SearchCandidate], search_term: str, book_info: dict = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """Let user select from candidate pages."""
+        """Let user select from candidate pages (with optional AI pre-selection)."""
+
+        # Try AI selection first if enabled
+        if self.enable_ai_selection:
+            ai_selected = self.candidate_selector.select_best_candidate(
+                candidates, search_term, book_info
+            )
+            if ai_selected:
+                from ..utils import safe_encode_text
+                print(safe_encode_text(f"\n🤖 LLM Auto-selected: {ai_selected.title}"))
+                print(f"   URL: {ai_selected.url}")
+                print(f"   Site: {ai_selected.site_key}")
+
+                # Ask user to confirm AI selection
+                confirm = input("\nAccept this selection? [Y/n]: ").strip().lower()
+                if confirm in ('', 'y', 'yes'):
+                    log.debug(f"User confirmed AI selection: {ai_selected.url}")
+                    return ai_selected.site_key, ai_selected.url, ai_selected.html
+                else:
+                    print("AI selection rejected, showing all candidates...")
 
         # Display book information for context
         self._display_book_context(search_term, book_info)
@@ -259,11 +283,6 @@ class AutoSearchEngine:
             print()
         print("[0] Skip this book")
         print("\nOr enter a custom URL from a supported site (audible.com, goodreads.com, lubimyczytac.pl)")
-
-        # Future: AI selection could be implemented here
-        # ai_choice = ai_select_best_candidate(candidates, search_term)
-        # if ai_choice is not None:
-        #     return candidates[ai_choice].site_key, candidates[ai_choice].url, candidates[ai_choice].html
 
         while True:
             user_input = input(f"Select [1-{len(candidates)}], 0 to skip, or enter URL: ").strip()
@@ -382,37 +401,38 @@ class AutoSearchEngine:
     
     def _display_book_context(self, search_term: str, book_info: dict = None):
         """Display context about the book being processed."""
+        from ..utils import safe_encode_text
         print("\n" + "="*80)
-        print("📚 SELECTING METADATA FOR:")
+        print(safe_encode_text("📚 SELECTING METADATA FOR:"))
         print("="*80)
-        
+
         if book_info:
             # Display available metadata
             if book_info.get('title'):
-                print(f"📖 Title: {book_info['title']}")
+                print(safe_encode_text(f"📖 Title: {book_info['title']}"))
             if book_info.get('author'):
-                print(f"✍️  Author: {book_info['author']}")
+                print(safe_encode_text(f"✍️  Author: {book_info['author']}"))
             if book_info.get('series'):
                 series_info = book_info['series']
                 if book_info.get('volume'):
                     series_info += f" (Volume {book_info['volume']})"
-                print(f"📚 Series: {series_info}")
+                print(safe_encode_text(f"📚 Series: {series_info}"))
             if book_info.get('narrator'):
-                print(f"🎤 Narrator: {book_info['narrator']}")
+                print(safe_encode_text(f"🎤 Narrator: {book_info['narrator']}"))
             if book_info.get('publisher'):
-                print(f"🏢 Publisher: {book_info['publisher']}")
+                print(safe_encode_text(f"🏢 Publisher: {book_info['publisher']}"))
             if book_info.get('year'):
-                print(f"📅 Year: {book_info['year']}")
+                print(safe_encode_text(f"📅 Year: {book_info['year']}"))
             if book_info.get('language'):
-                print(f"🌍 Language: {book_info['language']}")
+                print(safe_encode_text(f"🌍 Language: {book_info['language']}"))
             if book_info.get('source'):
-                print(f"📂 Source: {book_info['source']}")
+                print(safe_encode_text(f"📂 Source: {book_info['source']}"))
             
             # Show folder name if different from title
             if book_info.get('folder_name') and book_info.get('folder_name') != book_info.get('title'):
-                print(f"📁 Folder: {book_info['folder_name']}")
+                print(safe_encode_text(f"📁 Folder: {book_info['folder_name']}"))
         else:
             # Fallback to search term and folder name
-            print(f"🔍 Search term: {search_term}")
+            print(safe_encode_text(f"🔍 Search term: {search_term}"))
         
         print("="*80)

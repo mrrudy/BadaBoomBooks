@@ -10,6 +10,16 @@ import sys
 from pathlib import Path
 import logging as log
 
+# === ENCODING CONFIGURATION ===
+# Reconfigure stdout/stderr to handle Unicode properly on Windows
+# This prevents UnicodeEncodeError when printing non-ASCII characters
+if sys.platform == 'win32':
+    import codecs
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
+
 __version__ = 0.60
 
 # === PATHS ===
@@ -24,6 +34,18 @@ else:
 # If still in src, go up one more level
 if root_path.name == 'src':
     root_path = root_path.parent
+
+# Load .env file if it exists
+try:
+    from dotenv import load_dotenv
+    env_file = root_path / '.env'
+    if env_file.exists():
+        load_dotenv(env_file)
+        log.debug(f"Loaded environment variables from {env_file}")
+except ImportError:
+    log.debug("python-dotenv not available, skipping .env file loading")
+except Exception as e:
+    log.debug(f"Error loading .env file: {e}")
 
 config_file = root_path / 'queue.ini'
 debug_file = root_path / 'debug.log'
@@ -61,6 +83,19 @@ SCRAPER_REGISTRY = {
         "preprocess_func_name": None
     }
 }
+
+# === LLM CONFIGURATION ===
+def load_llm_config():
+    """Load LLM configuration from environment variables."""
+    import os
+    return {
+        'api_key': os.getenv('LLM_API_KEY'),
+        'model': os.getenv('LLM_MODEL', 'gpt-3.5-turbo'),
+        'base_url': os.getenv('OPENAI_BASE_URL'),  # For local models (LM Studio, Ollama)
+        'enabled': bool(os.getenv('LLM_API_KEY'))  # Auto-enable if API key present
+    }
+
+LLM_CONFIG = load_llm_config()
 
 # === LOGGING CONFIGURATION ===
 def setup_logging(debug_enabled: bool = False):

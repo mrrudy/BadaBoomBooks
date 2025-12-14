@@ -55,19 +55,28 @@ class BadaBoomBooksApp:
         try:
             # Parse and validate arguments
             processing_args = self.cli.parse_args(args)
+
+            # Handle LLM connection test early (before validation)
+            if processing_args.llm_conn_test:
+                # Setup environment for config loading
+                setup_environment()
+                from .search.llm_scoring import test_llm_connection
+                success = test_llm_connection()
+                return 0 if success else 1
+
             validation_errors = self.cli.validate_args(processing_args)
-            
+
             if validation_errors:
                 self.cli.handle_validation_errors(validation_errors)
                 return 1
-            
+
             # Setup environment and logging
             setup_environment()
             setup_logging(processing_args.debug)
-            
+
             # Show banner
             self.cli.print_banner()
-            
+
             # Initialize processors
             self._initialize_processors(processing_args)
             
@@ -104,9 +113,12 @@ class BadaBoomBooksApp:
         self.file_processor = FileProcessor(args)
         self.metadata_processor = MetadataProcessor(args.dry_run)
         self.audio_processor = AudioProcessor(args.dry_run)
-        
+
         if args.auto_search:
-            self.auto_search = AutoSearchEngine(args.debug)
+            self.auto_search = AutoSearchEngine(
+                debug_enabled=args.debug,
+                enable_ai_selection=args.llm_select
+            )
     
     def _discover_folders(self, args: ProcessingArgs) -> List[Path]:
         """Discover all folders to process."""

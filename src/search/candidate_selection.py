@@ -13,62 +13,82 @@ from ..models import SearchCandidate
 
 class CandidateSelector:
     """Handles candidate selection logic."""
-    
+
     def __init__(self, enable_ai_selection: bool = False):
         self.enable_ai_selection = enable_ai_selection
+        self.llm_scorer = None
+
+        if enable_ai_selection:
+            from .llm_scoring import LLMScorer
+            self.llm_scorer = LLMScorer()
     
-    def select_best_candidate(self, candidates: List[SearchCandidate], 
-                            search_term: str) -> Optional[SearchCandidate]:
+    def select_best_candidate(self, candidates: List[SearchCandidate],
+                            search_term: str,
+                            book_info: dict = None) -> Optional[SearchCandidate]:
         """
         Select the best candidate from a list.
-        
+
         Args:
             candidates: List of search candidates
             search_term: Original search term
-            
+            book_info: Optional book context information
+
         Returns:
             Best candidate or None if none suitable
         """
         if not candidates:
             return None
-        
+
         if len(candidates) == 1:
             return candidates[0]
-        
+
         # Try AI selection if enabled
         if self.enable_ai_selection:
-            ai_choice = self._ai_select_candidate(candidates, search_term)
+            ai_choice = self._ai_select_candidate(candidates, search_term, book_info)
             if ai_choice is not None:
                 return ai_choice
-        
+
         # Fallback to heuristic selection
         return self._heuristic_select_candidate(candidates, search_term)
     
-    def _ai_select_candidate(self, candidates: List[SearchCandidate], 
-                           search_term: str) -> Optional[SearchCandidate]:
+    def _ai_select_candidate(self, candidates: List[SearchCandidate],
+                           search_term: str,
+                           book_info: dict = None) -> Optional[SearchCandidate]:
         """
         Use AI to select the best candidate.
-        
-        This is a placeholder for future AI-powered selection.
-        Could use language models to analyze titles, snippets, and content
-        to determine the best match for the search term.
-        
+
         Args:
             candidates: List of candidates to choose from
             search_term: Original search term
-            
+            book_info: Optional book context information
+
         Returns:
-            Selected candidate or None
+            Selected candidate or None if no good match
         """
-        # TODO: Implement AI-powered candidate selection
-        # This could involve:
-        # - Analyzing title similarity to search term
-        # - Checking snippet content relevance
-        # - Parsing HTML content for additional metadata
-        # - Using fuzzy matching or semantic similarity
-        
-        log.info("AI candidate selection not yet implemented, falling back to heuristics")
-        return None
+        if not self.llm_scorer or not self.llm_scorer.llm_available:
+            log.info("LLM not available, falling back to heuristics")
+            return None
+
+        # Score all candidates using LLM
+        scored_candidates = self.llm_scorer.score_candidates(
+            candidates, search_term, book_info
+        )
+
+        # Sort by LLM score (highest first)
+        scored_candidates.sort(key=lambda x: x[1], reverse=True)
+
+        # Get best candidate
+        best_candidate, best_score = scored_candidates[0]
+
+        # Define acceptance threshold (0.5 = 50% confidence minimum)
+        ACCEPTANCE_THRESHOLD = 0.5
+
+        if best_score < ACCEPTANCE_THRESHOLD:
+            log.info(f"Best LLM score ({best_score:.2f}) below threshold ({ACCEPTANCE_THRESHOLD}), rejecting all")
+            return None
+
+        log.info(f"LLM selected '{best_candidate.title}' with score {best_score:.2f}")
+        return best_candidate
     
     def _heuristic_select_candidate(self, candidates: List[SearchCandidate], 
                                   search_term: str) -> Optional[SearchCandidate]:

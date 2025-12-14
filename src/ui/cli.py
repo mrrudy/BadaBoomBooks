@@ -130,14 +130,24 @@ Cheers to the community for providing our content and building our tools!
             help="Specify the site to perform initial searches [audible, goodreads, lubimyczytac, all]"
         )
         parser.add_argument(
-            '--auto-search', 
-            action='store_true', 
+            '--auto-search',
+            action='store_true',
             help='Automatically search and fetch candidate pages for each book'
         )
         parser.add_argument(
-            '--search-limit', 
-            type=int, 
-            default=5, 
+            '--llm-select',
+            action='store_true',
+            help='Enable LLM-based candidate selection (requires LLM_API_KEY environment variable)'
+        )
+        parser.add_argument(
+            '--llm-conn-test',
+            action='store_true',
+            help='Test LLM connection and exit (sends simple ping prompt to verify connectivity)'
+        )
+        parser.add_argument(
+            '--search-limit',
+            type=int,
+            default=5,
             help='Number of search results to fetch per site'
         )
         parser.add_argument(
@@ -206,10 +216,12 @@ Cheers to the community for providing our content and building our tools!
             # Search options
             site=parsed.site,
             auto_search=parsed.auto_search,
+            llm_select=parsed.llm_select,
+            llm_conn_test=parsed.llm_conn_test,
             search_limit=parsed.search_limit,
             download_limit=parsed.download_limit,
             search_delay=parsed.search_delay,
-            
+
             # Debug
             debug=parsed.debug
         )
@@ -321,13 +333,17 @@ Cheers to the community for providing our content and building our tools!
             True if user confirms, False otherwise
         """
         mode = "DRY RUN" if dry_run else "PROCESSING"
-        
+
         print(f"\n=== {mode} CONFIRMATION ===")
         print(f"Ready to process {len(folders)} folder(s):")
-        
+
         for folder in folders[:10]:  # Show first 10
-            print(f"  - {folder.name}")
-        
+            try:
+                print(f"  - {folder.name}")
+            except UnicodeEncodeError:
+                # Fallback for Windows terminal that can't display special characters
+                print(f"  - {folder.name.encode('ascii', 'replace').decode('ascii')}")
+
         if len(folders) > 10:
             print(f"  ... and {len(folders) - 10} more")
         
