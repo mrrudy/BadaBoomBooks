@@ -116,11 +116,16 @@ Cheers to the community for providing our content and building our tools!
             help="Download and save cover image as cover.jpg in audiobook folder"
         )
         parser.add_argument(
-            '-F', '--from-opf', 
-            action='store_true', 
+            '-F', '--from-opf',
+            action='store_true',
             help='Read metadata from metadata.opf file if present, fallback to web scraping if not'
         )
-        
+        parser.add_argument(
+            '--force-refresh',
+            action='store_true',
+            help='Force re-scraping from web sources even if complete metadata.opf exists (requires dc:source URL in OPF)'
+        )
+
         # === SEARCH OPTIONS ===
         parser.add_argument(
             '-s', '--site', 
@@ -219,6 +224,7 @@ Cheers to the community for providing our content and building our tools!
             opf=parsed.opf,
             cover=parsed.cover,
             from_opf=parsed.from_opf,
+            force_refresh=parsed.force_refresh,
 
             # Search options
             site=parsed.site,

@@ -24,6 +24,9 @@ python BadaBoomBooks.py --auto-search --llm-select --yolo --opf --id3-tag --move
 # Dry run for testing
 python BadaBoomBooks.py --dry-run --auto-search --series --opf "C:\Test Folder"
 
+# Force refresh - re-scrape metadata even if OPF exists
+python BadaBoomBooks.py --from-opf --opf --force-refresh "C:\Audiobook Folder"
+
 # Run from modular source
 python src/main.py [arguments]
 ```
@@ -205,6 +208,11 @@ The main processing flow in [src/main.py](src/main.py):
 - **info.txt** files are formatted for SmartAudioBookPlayer app
 - **ID3 tagging** uses mutagen library, supports MP3/M4A/M4B/FLAC/OGG/WMA
 - **Cover images** downloaded from scraped `cover_url` field
+- **Force refresh** (`--force-refresh` flag): Re-scrapes metadata even when complete `metadata.opf` exists
+  - Requires `<dc:source>` URL in existing OPF file
+  - Uses OPF's title/author for context during scraping
+  - Falls back to auto-search if no source URL found
+  - Useful for fixing broken/incomplete metadata or updating to latest information
 
 ### Web Interface Specifics
 

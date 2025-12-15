@@ -210,7 +210,8 @@ class ProcessingArgs:
     series: bool = False
     cover: bool = False
     from_opf: bool = False
-    
+    force_refresh: bool = False
+
     # === SEARCH OPTIONS ===
     site: str = 'all'
     auto_search: bool = False

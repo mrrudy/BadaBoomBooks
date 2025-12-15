@@ -188,14 +188,30 @@ class BadaBoomBooksApp:
             self.progress.start_book(BookMetadata.create_empty(str(folder)), i)
             
             try:
-                # Check for existing OPF file if requested
-                if args.from_opf:
+                # Check for existing OPF file if requested (but not if force refresh)
+                if args.from_opf and not args.force_refresh:
                     opf_file = folder / 'metadata.opf'
                     if opf_file.exists():
                         self._add_opf_to_queue(folder)
                         self.progress.finish_book(True)
                         continue
-                
+
+                # If force_refresh is set, treat OPF as search source
+                if args.force_refresh:
+                    opf_file = folder / 'metadata.opf'
+                    if opf_file.exists():
+                        # Read OPF to get title/author/source for searching
+                        temp_metadata = self.metadata_processor.read_opf_metadata(opf_file)
+
+                        if temp_metadata.url:
+                            # Use source URL from OPF for re-scraping
+                            self._add_url_to_queue(folder, temp_metadata.url)
+                            self.progress.finish_book(True)
+                            continue
+                        else:
+                            # No source URL - fall through to normal search
+                            log.warning(f"No source URL in OPF for {folder.name}, performing search")
+
                 # Use auto-search or manual search
                 if args.auto_search:
                     success = self._auto_search_for_folder(folder, args)
