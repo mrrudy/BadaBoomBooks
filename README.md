@@ -221,6 +221,14 @@ python -m pytest tests/
 
 # Test imports
 python -c "from src.main import BadaBoomBooksApp; print('✅ Imports working')"
+
+# Scrapers - Full regression (all samples per service)
+python -m pytest src/tests/test_scrapers.py::test_lubimyczytac_scraper_regression_all_samples -v -s
+
+# TDD workflow
+mkdir -p src/tests/data/scrapers/tdd/my-test
+# Create metadata.opf with expected values
+python -m pytest src/tests/test_scrapers.py::test_manual_tdd_sample -v -s
 ```
 
 ## 📜 Legacy Code

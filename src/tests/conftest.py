@@ -130,3 +130,108 @@ def sample_opf_content():
   </ns0:metadata>
 </ns0:package>
 """
+
+
+# ============================================================================
+# Scraper Testing Fixtures
+# ============================================================================
+
+@pytest.fixture
+def scraper_test_data_dir(test_data_dir):
+    """
+    Fixture that returns the path to the scraper test data directory.
+
+    Returns:
+        Path: Absolute path to src/tests/data/scrapers/
+    """
+    return test_data_dir / 'scrapers'
+
+
+@pytest.fixture
+def lubimyczytac_samples(scraper_test_data_dir):
+    """
+    Fixture that returns all LubimyCzytac test sample OPF files.
+
+    Returns:
+        List[Path]: List of paths to metadata.opf files in lubimyczytac/ subdirectories
+    """
+    lubimyczytac_dir = scraper_test_data_dir / 'lubimyczytac'
+    if not lubimyczytac_dir.exists():
+        return []
+    return sorted(lubimyczytac_dir.glob('*/metadata.opf'))
+
+
+@pytest.fixture
+def audible_samples(scraper_test_data_dir):
+    """
+    Fixture that returns all Audible test sample OPF files.
+
+    Returns:
+        List[Path]: List of paths to metadata.opf files in audible/ subdirectories
+    """
+    audible_dir = scraper_test_data_dir / 'audible'
+    if not audible_dir.exists():
+        return []
+    return sorted(audible_dir.glob('*/metadata.opf'))
+
+
+@pytest.fixture
+def goodreads_samples(scraper_test_data_dir):
+    """
+    Fixture that returns all Goodreads test sample OPF files.
+
+    Returns:
+        List[Path]: List of paths to metadata.opf files in goodreads/ subdirectories
+    """
+    goodreads_dir = scraper_test_data_dir / 'goodreads'
+    if not goodreads_dir.exists():
+        return []
+    return sorted(goodreads_dir.glob('*/metadata.opf'))
+
+
+@pytest.fixture
+def all_scraper_samples(lubimyczytac_samples, audible_samples, goodreads_samples):
+    """
+    Fixture that returns all scraper test samples organized by service.
+
+    Returns:
+        Dict[str, List[Path]]: Dictionary mapping service name to list of OPF file paths
+    """
+    return {
+        'lubimyczytac': lubimyczytac_samples,
+        'audible': audible_samples,
+        'goodreads': goodreads_samples,
+    }
+
+
+@pytest.fixture
+def random_sample_per_service(all_scraper_samples):
+    """
+    Fixture that returns one random OPF per service for quick smoke tests.
+
+    Returns:
+        Dict[str, Optional[Path]]: Dictionary mapping service name to a random OPF file path
+                                   (or None if no samples available for that service)
+    """
+    import random
+
+    result = {}
+    for service, samples in all_scraper_samples.items():
+        if samples:
+            result[service] = random.choice(samples)
+        else:
+            result[service] = None
+
+    return result
+
+
+@pytest.fixture
+def metadata_processor():
+    """
+    Fixture that provides a MetadataProcessor instance for reading OPF files.
+
+    Returns:
+        MetadataProcessor: Instance for OPF operations
+    """
+    from src.processors.metadata_operations import MetadataProcessor
+    return MetadataProcessor(dry_run=False)

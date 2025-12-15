@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+
+<!-- Open Packaging Format (opf) File layout for audiobookshelf -->
+<!-- author, narrator, genre series, {series/volume number}, and tag can be repeated as desired -->
+
+    <dc:title>Protokół buntu. Strategia wyjścia</dc:title>
+    <dc:subtitle>Rogue Protocol. Exit Strategy</dc:subtitle>
+    <dc:description>Protokół buntu Głównym bohaterem jest człekokształtny android, nieustannie wciągany w przygodę za przygodą, choć tak naprawdę chce mieć tylko święty spokój z dala od ludzkości i pogawędek. Kto by pomyślał, że bycie bezduszną maszyną do zabijania wiązało się z taką ilością dylematów moralnych? Ulubiona antyspołeczna SI znowu ma zadanie. Sprawa przeciw zbyt wielkiej by upaść korporacji GrayCris utknęła w martwym punkcie, a co istotniejsze, władze zadają coraz więcej pytań o miejsce pobytu jednostki ochroniarskiej doktor Mensah. A Mordbot wolałby, żeby nikt o to nie pytał. Nigdy. Strategia wyjścia Mordbota nie zaprogramowano do przejmowania się, więc jego decyzja ruszenia na pomoc jedynej istocie ludzkiej, która okazała mu szacunek musiała być usterką systemu, prawda? Po przebyciu połowy galaktyki w celu odkrycia mrocznych szczegółów swych własnych zbrodni oraz tych popełnionych przez korporację GrayCris, Mordbot wraca do domu by pomóc doktor Mensah – byłej właścicielki (obrończyni? przyjaciółki?) – przedstawić dowody, które mogą uniemożliwić GrayCris w swej niekończącej się misji zwiększania zysków zniszczenie kolejnych kolonistów. Tylko kto uwierzy zbuntowanej jednostce ochroniarskiej? I co się z nią stanie w razie złapania?</dc:description>
+    <dc:creator opf:role="aut">Martha Wells</dc:creator>      <!-- author -->
+    <dc:creator opf:role="nrt"></dc:creator>      <!-- narrator -->
+    <dc:publisher></dc:publisher>
+    <dc:date></dc:date>                           <!-- publish year -->
+    <dc:language>pol</dc:language>
+    <dc:subject>fantasy</dc:subject>
+    <dc:subject>science fiction</dc:subject>
+    <dc:identifier opf:scheme="ISBN">9788368069020</dc:identifier>
+    <dc:identifier opf:scheme="ASIN"></dc:identifier>
+    <dc:source>https://lubimyczytac.pl/ksiazka/5080957/protokol-buntu-strategia-wyjscia</dc:source> <!-- source URL for metadat -->
+    <ns0:meta name="calibre:series" content="Pamiętniki Mordbota" /> <!-- series -->
+    <ns0:meta name="calibre:series_index" content="3,4" /> <!-- volumeNumber -->
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>

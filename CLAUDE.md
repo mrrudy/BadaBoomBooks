@@ -297,6 +297,132 @@ python -m pytest src/tests/ -v -m integration
 4. Refactor if needed
 5. Verify test still passes
 
+### Scraper Regression Testing
+
+The project includes comprehensive scraper regression tests that compare live-scraped metadata against reference OPF files to distinguish between scraper failures and legitimate service updates.
+
+**Test Structure:**
+```
+src/tests/
+├── utils/
+│   ├── metadata_comparison.py   # Comparison logic
+│   └── diff_reporter.py         # Human-readable diff reports
+├── test_scrapers.py             # Scraper regression tests
+└── data/
+    └── scrapers/                # Test samples by service
+        ├── lubimyczytac/
+        │   ├── martha-wells-1-2/metadata.opf
+        │   ├── martha-wells-3-4/metadata.opf
+        │   └── martha-wells-5/metadata.opf
+        ├── audible/
+        └── goodreads/
+```
+
+**Running Scraper Tests:**
+```bash
+# Quick smoke test (one random sample per service)
+python -m pytest src/tests/ -v
+
+# Full LubimyCzytac regression (all samples)
+python -m pytest src/tests/test_scrapers.py::test_lubimyczytac_scraper_regression_all_samples -v -s
+
+# Skip network tests (for offline development)
+python -m pytest src/tests/ -v -m "not requires_network"
+
+# Run only scraper tests
+python -m pytest src/tests/ -v -m scraper
+```
+
+**Understanding Test Results:**
+
+Tests compare scraped metadata against reference OPF files using field-by-field comparison:
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| **PASS (Perfect Match)** | All fields match | ✓ Scraper working perfectly |
+| **PASS (Minor Changes)** | Non-critical fields differ | ✓ Expected variation, review if concerned |
+| **PASS (Major Changes)** | Summary/genres updated | ⚠ Service updated content, verify legitimacy |
+| **FAIL (Critical Fields)** | Title/author missing/wrong | ✗ Scraper broken, fix immediately |
+
+**Field Severity Levels:**
+- **CRITICAL** (test fails): `title`, `author`, `url` - must match exactly
+- **MAJOR** (test passes with warning): `series`, `volumenumber`, `summary`, `genres`, `language`, `isbn`
+- **MINOR** (test passes): `subtitle`, `narrator`, `publisher`, `publishyear`
+- **DYNAMIC** (allowed to change): `cover_url`
+
+**Adding Test Samples:**
+
+To add new test samples from your production library:
+
+1. Process an audiobook with the app (ensure `<dc:source>` is populated)
+2. Copy `metadata.opf` to test directory:
+```bash
+# Example for LubimyCzytac
+mkdir -p "src/tests/data/scrapers/lubimyczytac/author-name-volume"
+cp "T:\Sorted\Books\newAudio\Sorted\Author\Series\Volume\metadata.opf" \
+   "src/tests/data/scrapers/lubimyczytac/author-name-volume/metadata.opf"
+```
+3. Verify `<dc:source>` contains URL: `grep dc:source metadata.opf`
+4. Commit to repository
+
+**TDD Workflow for Scrapers:**
+
+Developing or fixing a scraper:
+
+1. **Create test case:**
+```bash
+mkdir -p src/tests/data/scrapers/tdd/my-test
+# Create metadata.opf with expected values + source URL
+```
+
+2. **Run test:**
+```bash
+python -m pytest src/tests/test_scrapers.py::test_manual_tdd_sample -v -s
+```
+
+3. **Fix scraper** based on diff report
+4. **Iterate** until test passes
+
+**Interpreting Diff Reports:**
+
+Example report:
+```
+SCRAPER REGRESSION TEST: lubimyczytac
+URL: https://lubimyczytac.pl/ksiazka/5068091/...
+Status: PASS (Major Changes Detected)
+Overall Similarity: 94.2%
+
+CRITICAL FIELDS: ✓ PASS
+  ✓ title: "Wszystkie wskaźniki czerwone. Sztuczny stan"
+  ✓ author: "Martha Wells"
+
+MAJOR FIELDS: ⚠ CHANGES (1)
+  ⚠ summary: CHANGED (length: 1234 → 1289 chars) (similarity: 92.3%)
+    [Use -s for full diff]
+
+INTERPRETATION:
+✓ Scraper is working correctly
+⚠ Summary content updated on service (possibly legitimate)
+→ Review changes to verify they are expected
+```
+
+**What to do:**
+- ✓ **Green status**: Scraper working, no action needed
+- ⚠ **Yellow warnings**: Review changes, update reference OPF if legitimate
+- ✗ **Red failures**: Fix scraper selectors, check `debug_pages/` for HTML
+
+**Updating Reference Data:**
+
+When service legitimately updates metadata:
+1. Verify changes on live website
+2. If legitimate, update reference OPF file:
+```bash
+# Re-process book to get fresh metadata
+python BadaBoomBooks.py --from-opf --opf -R "T:\path\to\book"
+# Copy new OPF to test directory
+cp "T:\path\to\book\metadata.opf" "src/tests/data/scrapers/SERVICE/sample-name/"
+```
+
 ### Manual Testing Recommendations
 
 When making changes:
