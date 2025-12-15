@@ -60,6 +60,21 @@ python test_imports.py
 python BadaBoomBooks.py --debug [other arguments]
 ```
 
+**Run tests:**
+```bash
+# Run all tests
+python -m pytest src/tests/ -v
+
+# Run specific test file
+python -m pytest src/tests/test_file_operations.py -v
+
+# Run specific test
+python -m pytest src/tests/test_file_operations.py::test_copy_rename_from_opf -v
+
+# Run tests with markers
+python -m pytest src/tests/ -v -m integration
+```
+
 ## Architecture
 
 ### Modular Structure
@@ -209,7 +224,69 @@ The main processing flow in [src/main.py](src/main.py):
 
 Original monolithic code preserved in `legacy/` folder. All new development uses modular architecture in `src/`.
 
-## Testing Recommendations
+## Testing
+
+### Automated Tests
+
+The project uses **pytest** for automated testing. Tests are located in `src/tests/`.
+
+**Test Structure:**
+```
+src/tests/
+├── __init__.py
+├── conftest.py              # Shared fixtures (test data dirs, cleanup utilities)
+├── test_file_operations.py  # Integration tests for copy/rename/organize
+└── data/
+    ├── existing/            # Static test data (committed to repo)
+    │   └── [test audiobook folders with metadata.opf]
+    └── expected/            # Output directory (cleaned before each test)
+```
+
+**Running Tests:**
+```bash
+# Run all tests
+python -m pytest src/tests/ -v
+
+# Run specific test file
+python -m pytest src/tests/test_file_operations.py -v
+
+# Run specific test
+python -m pytest src/tests/test_file_operations.py::test_copy_rename_from_opf -v
+
+# Run only integration tests
+python -m pytest src/tests/ -v -m integration
+```
+
+**Available Tests:**
+- `test_copy_rename_from_opf`: Tests `--copy --rename --from-opf` pipeline
+  - Validates folder organization (Author/Title/ structure)
+  - Verifies file renaming (01 - Title.mp3 format)
+  - Checks UTF-8 encoding preservation in OPF files
+  - Tests path sanitization with problematic characters
+- `test_copy_rename_from_opf_with_series`: Tests series organization (`--series` flag)
+  - Validates Author/Series/Volume - Title/ structure
+
+**Test Data:**
+- Static test data in `src/tests/data/existing/` includes:
+  - Audiobook folder with problematic name: `[ignore] Book Title's - Author (Series)_`
+  - UTF-8 encoded `metadata.opf` with Polish characters (ą, ę, ć, ł, ó, ń, ś, ź, ż)
+  - Empty `.mp3` stub files for testing copy/rename operations
+
+**Writing New Tests:**
+1. Add test functions to appropriate `test_*.py` file in `src/tests/`
+2. Use fixtures from `conftest.py` (`expected_dir`, `existing_dir`, `cleanup_queue_ini`)
+3. Mark tests with appropriate markers: `@pytest.mark.integration`, `@pytest.mark.unit`, etc.
+4. Always use `--yolo` flag when running app in tests to skip interactive prompts
+5. Clean up any generated files (tests should be isolated and repeatable)
+
+**Test-Driven Development (TDD):**
+1. Write test first (define expected behavior)
+2. Run test to see it fail
+3. Implement feature to make test pass
+4. Refactor if needed
+5. Verify test still passes
+
+### Manual Testing Recommendations
 
 When making changes:
 1. Test with `--dry-run` first to verify logic
