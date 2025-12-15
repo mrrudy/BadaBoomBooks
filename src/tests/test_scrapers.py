@@ -296,7 +296,7 @@ def test_scraper_handles_network_error(
 
     # This should either fail gracefully or raise RequestException
     try:
-        scraped_metadata = app._scrape_metadata(metadata, app.logger)
+        scraped_metadata = app._scrape_metadata(metadata)
 
         # If it didn't raise, it should be marked as failed
         # (or might succeed if the page exists with different data)
