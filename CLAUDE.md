@@ -265,6 +265,9 @@ python -m pytest src/tests/ -v -m integration
   - Tests path sanitization with problematic characters
 - `test_copy_rename_from_opf_with_series`: Tests series organization (`--series` flag)
   - Validates Author/Series/Volume - Title/ structure
+- `test_copy_rename_from_opf_with_trailing_slashes`: Tests handling of trailing slashes in paths
+  - Verifies paths ending with '/' are handled correctly
+  - Same validation as base test but with trailing slashes on -O and -R arguments
 
 **Test Data:**
 - Static test data in `src/tests/data/existing/` includes:

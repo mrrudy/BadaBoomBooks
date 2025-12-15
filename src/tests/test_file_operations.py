@@ -181,3 +181,65 @@ def test_copy_rename_from_opf_with_series(existing_dir, expected_dir, cleanup_qu
     assert renamed_file_1.exists(), f"File not found: {renamed_file_1}"
     assert renamed_file_2.exists(), f"File not found: {renamed_file_2}"
     assert output_opf.exists(), f"OPF not found: {output_opf}"
+
+
+@pytest.mark.integration
+def test_copy_rename_from_opf_with_trailing_slashes(existing_dir, expected_dir, cleanup_queue_ini):
+    """
+    Test complete processing pipeline with trailing slashes in directory paths.
+
+    This test verifies that the application correctly handles directory paths
+    that end with '/' or '\\' characters, which is common when users copy/paste
+    paths or use tab completion.
+
+    Test command equivalent:
+        python BadaBoomBooks.py --copy --rename --from-opf \
+            -O src/tests/data/expected/ -R src/tests/data/existing/
+    """
+    # Setup: Verify test data exists
+    test_book_folder = existing_dir / "[ignore] Book Title's - Author (Series)_"
+    assert test_book_folder.exists(), f"Test data folder not found: {test_book_folder}"
+
+    # Execute: Run BadaBoomBooks with trailing slashes in paths
+    # Note: --yolo flag auto-accepts all prompts for automated testing
+    # Important: Add trailing slashes to both -O and -R arguments
+    app = BadaBoomBooksApp()
+    exit_code = app.run([
+        '--copy',
+        '--rename',
+        '--from-opf',
+        '--yolo',
+        '-O', str(expected_dir) + '/',  # Trailing slash
+        '-R', str(existing_dir) + '/'   # Trailing slash
+    ])
+
+    # Verify: Application completed successfully
+    assert exit_code == 0, "Application should exit with code 0 (trailing slashes handled)"
+
+    # Verify: Correct folder structure created (same as without trailing slashes)
+    expected_author_dir = expected_dir / "Aname A. Asurname"
+    assert expected_author_dir.exists(), \
+        f"Author directory not created with trailing slashes: {expected_author_dir}"
+
+    expected_book_dir = expected_author_dir / "Proper Title"
+    assert expected_book_dir.exists(), \
+        f"Book directory not created with trailing slashes: {expected_book_dir}"
+
+    # Verify: Audio files were copied and renamed correctly
+    renamed_file_1 = expected_book_dir / "01 - Proper Title.mp3"
+    renamed_file_2 = expected_book_dir / "02 - Proper Title.mp3"
+
+    assert renamed_file_1.exists(), \
+        f"Renamed audio file not found with trailing slashes: {renamed_file_1}"
+    assert renamed_file_2.exists(), \
+        f"Renamed audio file not found with trailing slashes: {renamed_file_2}"
+
+    # Verify: metadata.opf was copied
+    output_opf = expected_book_dir / "metadata.opf"
+    assert output_opf.exists(), \
+        f"metadata.opf not found with trailing slashes: {output_opf}"
+
+    # Verify: File count matches (2 audio + 1 OPF = 3 files)
+    output_files = list(expected_book_dir.glob('*'))
+    assert len(output_files) == 3, \
+        f"Expected 3 files in output, found {len(output_files)}: {output_files}"
