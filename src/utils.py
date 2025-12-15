@@ -137,10 +137,10 @@ def find_audio_files(folder_path: Path) -> List[Path]:
 def has_audio_files(folder_path: Path) -> bool:
     """
     Check if a folder contains any audio files.
-    
+
     Args:
         folder_path: Path to check
-        
+
     Returns:
         True if folder contains audio files
     """
@@ -148,6 +148,39 @@ def has_audio_files(folder_path: Path) -> bool:
         if any(folder_path.rglob(f"*{ext}")):
             return True
     return False
+
+
+def find_metadata_opf(folder_path: Path) -> Optional[Path]:
+    """
+    Find metadata.opf file in folder or its subdirectories.
+
+    Searches in the following order:
+    1. Direct child: folder/metadata.opf
+    2. In same folder as audio files (for nested structures)
+
+    Args:
+        folder_path: Path to search
+
+    Returns:
+        Path to metadata.opf if found, None otherwise
+    """
+    # First check direct child
+    direct_opf = folder_path / 'metadata.opf'
+    if direct_opf.exists():
+        return direct_opf
+
+    # Search in subdirectories where audio files are located
+    # This handles nested structures like: Author/Book - Author/Book/metadata.opf
+    for ext in AUDIO_EXTENSIONS:
+        audio_files = list(folder_path.rglob(f"*{ext}"))
+        if audio_files:
+            # Check for metadata.opf in the same directory as the first audio file
+            audio_folder = audio_files[0].parent
+            opf_file = audio_folder / 'metadata.opf'
+            if opf_file.exists():
+                return opf_file
+
+    return None
 
 
 def encode_for_config(text: str) -> str:

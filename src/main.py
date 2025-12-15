@@ -17,7 +17,7 @@ from .ui import CLIHandler, ProgressReporter, OutputFormatter
 from .search import AutoSearchEngine, ManualSearchHandler
 from .scrapers import AudibleScraper, GoodreadsScraper, LubimyczytacScraper
 from .processors import FileProcessor, MetadataProcessor, AudioProcessor
-from .utils import encode_for_config, decode_from_config, detect_url_site
+from .utils import encode_for_config, decode_from_config, detect_url_site, find_metadata_opf
 
 
 class BadaBoomBooksApp:
@@ -126,16 +126,38 @@ class BadaBoomBooksApp:
     def _discover_folders(self, args: ProcessingArgs) -> List[Path]:
         """Discover all folders to process."""
         folders = []
-        
+
         # Add folders from book root
         if args.book_root:
             discovered = self.cli.discover_folders_from_book_root(args.book_root)
             folders.extend(discovered)
             print(f"Discovered {len(discovered)} audiobook folders in {args.book_root}")
-        
+
         # Add explicitly specified folders
-        folders.extend(args.folders)
-        
+        # If a folder contains audio files only in subdirectories (e.g., author folders),
+        # discover the actual audiobook folders within it
+        for folder in args.folders:
+            # Check if audio files are directly in this folder
+            from .utils import find_audio_files
+            audio_files_in_folder = find_audio_files(folder)
+
+            if audio_files_in_folder:
+                # Check if audio files are ALL in subdirectories (not in root)
+                audio_in_root = any(f.parent == folder for f in audio_files_in_folder)
+
+                if not audio_in_root:
+                    # This is a parent folder (like author folder) - discover subfolders
+                    log.info(f"Folder {folder.name} contains audio files only in subdirectories, discovering audiobook folders...")
+                    discovered = self.cli.discover_folders_from_book_root(folder)
+                    folders.extend(discovered)
+                    print(f"Discovered {len(discovered)} audiobook folders in {folder.name}")
+                else:
+                    # Audio files in root - this is an audiobook folder
+                    folders.append(folder)
+            else:
+                # No audio files at all - add anyway, will fail validation later
+                folders.append(folder)
+
         # Remove duplicates while preserving order
         unique_folders = []
         seen = set()
@@ -144,7 +166,7 @@ class BadaBoomBooksApp:
             if folder_resolved not in seen:
                 unique_folders.append(folder_resolved)
                 seen.add(folder_resolved)
-        
+
         return unique_folders
     
     def _process_all_folders(self, folders: List[Path], args: ProcessingArgs) -> int:
@@ -190,16 +212,16 @@ class BadaBoomBooksApp:
             try:
                 # Check for existing OPF file if requested (but not if force refresh)
                 if args.from_opf and not args.force_refresh:
-                    opf_file = folder / 'metadata.opf'
-                    if opf_file.exists():
+                    opf_file = find_metadata_opf(folder)
+                    if opf_file:
                         self._add_opf_to_queue(folder)
                         self.progress.finish_book(True)
                         continue
 
                 # If force_refresh is set, treat OPF as search source
                 if args.force_refresh:
-                    opf_file = folder / 'metadata.opf'
-                    if opf_file.exists():
+                    opf_file = find_metadata_opf(folder)
+                    if opf_file:
                         # Read OPF to get title/author/source for searching
                         temp_metadata = self.metadata_processor.read_opf_metadata(opf_file)
 
@@ -294,11 +316,11 @@ class BadaBoomBooksApp:
             'folder_name': folder.name,
             'source': 'folder name'
         }
-        
+
         try:
             # Try to read existing OPF file first
-            opf_file = folder / 'metadata.opf'
-            if opf_file.exists():
+            opf_file = find_metadata_opf(folder)
+            if opf_file:
                 book_info.update(self._extract_from_opf(opf_file))
                 book_info['source'] = 'existing OPF file'
                 return book_info
@@ -571,7 +593,12 @@ class BadaBoomBooksApp:
     
     def _read_opf_metadata(self, folder_path: Path, metadata: BookMetadata) -> BookMetadata:
         """Read metadata from OPF file."""
-        opf_file = folder_path / 'metadata.opf'
+        opf_file = find_metadata_opf(folder_path)
+        if not opf_file:
+            log.error(f"No metadata.opf found in {folder_path}")
+            metadata.mark_as_failed(f"No metadata.opf found")
+            return metadata
+
         opf_metadata = self.metadata_processor.read_opf_metadata(opf_file)
         
         if opf_metadata.failed:
