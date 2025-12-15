@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>Proper Title</dc:title>
+    <dc:subtitle></dc:subtitle>
+    <dc:description>Lorem ipsum dolor sit ąmęt, cónsęctętür ądîpîsĉîng ęlît. Śęd dö ęïüsmöd tęmpör încîdîdünt üt łäbörę ęt döłörę mägnä äłîqüä. Üt ęnîm äd mînîm vęnîäm, qüîs nöstrüd ęxęrcîtätîön üłłämcö łäbörîs nîsî üt äłîqüîp ęx ęä cömmödö cönsęqüät. Żółć gęślą jąźń.</dc:description>
+    <dc:creator opf:role="aut">Aname A. Asurname</dc:creator>
+    <dc:creator opf:role="nrt"></dc:creator>
+    <dc:publisher></dc:publisher>
+    <dc:date></dc:date>
+    <dc:language>pol</dc:language>
+    <dc:subject>fantasy</dc:subject>
+    <dc:subject>science fiction</dc:subject>
+    <dc:identifier opf:scheme="ISBN">9799379643216</dc:identifier>
+    <dc:identifier opf:scheme="ASIN"></dc:identifier>
+    <dc:source></dc:source>
+    <ns0:meta name="calibre:series" content="Series Title" />
+    <ns0:meta name="calibre:series_index" content="22" />
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>

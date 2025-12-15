@@ -4,7 +4,22 @@ An advanced audiobook organization tool that automatically scrapes metadata from
 
 ## 🚀 Quick Start
 
-### 🌐 **Web Interface** (Recommended)
+### 💻 **Command Line Interface** (Recommended)
+```bash
+# Basic usage - organize audiobooks with automatic search
+python BadaBoomBooks.py --auto-search --opf --id3-tag -O "C:\Organized Books" "C:\Audiobook Folder"
+
+# Advanced usage - series organization with all features
+python BadaBoomBooks.py --auto-search --series --opf --infotxt --id3-tag --cover --move -O -R T:\Incoming -O T:\Sorted\
+
+# AI assisted sorting with all the futures
+python BadaBoomBooks.py --opf --id3-tag --series --cover --move --rename --from-opf --auto-search --llm-select -R T:\Incoming -O T:\Sorted\  
+
+# Dry run to see what would happen
+python BadaBoomBooks.py --dry-run --auto-search --series --opf "C:\Audiobook Folder"
+```
+
+### 🌐 **Web Interface** (WiP)
 ```bash
 # Start the modern web interface
 cd web
@@ -13,27 +28,7 @@ python start_web.py
 # Open browser to http://localhost:5000
 ```
 
-### 💻 **Command Line Interface**
-```bash
-# Basic usage - organize audiobooks with automatic search
-python BadaBoomBooks.py --auto-search --opf --id3-tag -O "C:\Organized Books" "C:\Audiobook Folder"
-
-# Advanced usage - series organization with all features
-python BadaBoomBooks.py --auto-search --series --opf --infotxt --id3-tag --cover --move -O "T:\Sorted" -R "T:\Incoming"
-
-# Dry run to see what would happen
-python BadaBoomBooks.py --dry-run --auto-search --series --opf "C:\Audiobook Folder"
-```
-
 ## ✨ **Features**
-
-### 🌐 **Modern Web Interface**
-- **Interactive File Browser**: Navigate and select audiobook folders with ease
-- **Real-Time Progress**: Live updates with WebSocket communication
-- **Visual Candidate Selection**: Compare and select metadata candidates visually
-- **Responsive Design**: Works on desktop, tablet, and mobile devices
-- **Drag & Drop Support**: Modern file selection interface
-- **Job Management**: Monitor multiple processing jobs simultaneously
 
 ### 🔍 **Intelligent Search & Scraping**
 - **Multi-site Support**: Audible, Goodreads, LubimyCzytac.pl
@@ -226,6 +221,14 @@ python -m pytest tests/
 
 # Test imports
 python -c "from src.main import BadaBoomBooksApp; print('✅ Imports working')"
+
+# Scrapers - Full regression (all samples per service)
+python -m pytest src/tests/test_scrapers.py::test_lubimyczytac_scraper_regression_all_samples -v -s
+
+# TDD workflow
+mkdir -p src/tests/data/scrapers/tdd/my-test
+# Create metadata.opf with expected values
+python -m pytest src/tests/test_scrapers.py::test_manual_tdd_sample -v -s
 ```
 
 ## 📜 Legacy Code

@@ -3,7 +3,10 @@
     "allow": [
       "Bash(dir:*)",
       "Bash(python:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(echo:*)",
+      "Bash(\"C:\\Users\\rudy\\Documents\\bin\\audiobook\\BadaBoomBooks\\src\\tests\\data\\existing\\[ignore] Book Title''s - Author (Series)_\\1-one.mp3\")",
+      "Bash(\"C:\\Users\\rudy\\Documents\\bin\\audiobook\\BadaBoomBooks\\src\\tests\\data\\existing\\[ignore] Book Title''s - Author (Series)_\\2-.mp3\")"
     ]
   }
 }

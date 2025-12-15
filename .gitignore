@@ -152,3 +152,4 @@ test_scoring_demo.py
 test_weights.py
 test_zero_score_fix.py
 
+src/tests/data/expected/*
