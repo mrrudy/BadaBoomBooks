@@ -66,6 +66,20 @@ def existing_dir(test_data_dir):
 
 
 @pytest.fixture
+def existing_dir_with_space(test_data_dir):
+    """
+    Fixture that returns the path to test data directory WITH SPACE in name.
+
+    This tests the bug where paths with spaces + trailing backslashes fail.
+    Contains static test data (audiobook folders with metadata.opf files).
+
+    Returns:
+        Path: Absolute path to src/tests/data/existing dir/
+    """
+    return test_data_dir / 'existing dir'
+
+
+@pytest.fixture
 def cleanup_queue_ini():
     """
     Fixture that ensures queue.ini is cleaned up after tests.

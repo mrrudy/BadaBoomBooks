@@ -268,6 +268,14 @@ python -m pytest src/tests/ -v -m integration
 - `test_copy_rename_from_opf_with_trailing_slashes`: Tests handling of trailing slashes in paths
   - Verifies paths ending with '/' are handled correctly
   - Same validation as base test but with trailing slashes on -O and -R arguments
+- `test_copy_rename_from_opf_with_windows_paths`: Tests Windows-style absolute paths
+  - Verifies handling of absolute paths with drive letters (C:\...)
+  - Tests backslashes as path separators with trailing backslash
+  - Critical for Windows users copying paths from File Explorer
+- `test_copy_rename_from_opf_with_mixed_path_separators`: Tests edge cases with multiple trailing backslashes
+  - Verifies handling of double/multiple trailing backslashes (path\\)
+  - Tests path normalization when users manually construct or concatenate paths
+  - Handles edge cases from manual path entry or script-generated paths
 
 **Test Data:**
 - Static test data in `src/tests/data/existing/` includes:
@@ -305,3 +313,28 @@ This codebase runs on Windows (working directory shows `C:\Users\rudy\...`):
 - File paths in CLI arguments may use backslashes
 - Selenium requires Chrome/Chromium installed
 - Some bash commands may need Windows equivalents (use `dir` instead of `ls`, etc.)
+
+### Important: Trailing Backslash Issue with Spaces in Paths
+
+**Known Issue:** When using PowerShell or CMD, paths with spaces AND trailing backslashes can cause problems:
+
+```powershell
+# ❌ FAILS in PowerShell/CMD (trailing \ escapes the closing quote)
+python .\BadaBoomBooks.py -R 'C:\path with space\'
+
+# ✅ WORKS - Remove trailing backslash
+python .\BadaBoomBooks.py -R 'C:\path with space'
+
+# ✅ WORKS - Use double backslash
+python .\BadaBoomBooks.py -R 'C:\path with space\\'
+
+# ✅ WORKS - Use double quotes
+python .\BadaBoomBooks.py -R "C:\path with space\"
+```
+
+**Why this happens:**
+- In PowerShell/CMD, a trailing backslash before a closing quote escapes the quote
+- The Python application itself handles these paths correctly
+- This is a shell-level issue, not an application bug
+
+**Solution:** Always remove trailing backslashes from paths with spaces, or use double quotes.
