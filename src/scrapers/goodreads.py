@@ -117,7 +117,27 @@ class GoodreadsScraper(BaseScraper):
                 metadata.genres = ','.join(genres_list)
         except Exception as e:
             logger.info(f"No genres scraped, leaving blank ({metadata.input_folder}) | {e}")
-        
+
+        # === COVER URL ===
+        try:
+            cover_url = ""
+
+            # Try meta og:image first
+            meta_img = soup.find("meta", property="og:image")
+            if meta_img and meta_img.get("content"):
+                cover_url = meta_img["content"].strip()
+
+            # Fallback: look for ResponsiveImage img tag
+            if not cover_url:
+                img_tag = soup.select_one('img.ResponsiveImage')
+                if img_tag and img_tag.get("src"):
+                    cover_url = img_tag["src"].strip()
+
+            metadata.cover_url = cover_url
+            logger.info(f"Cover URL scraped: {cover_url}")
+        except Exception as e:
+            logger.info(f"No cover scraped ({metadata.input_folder}) | {e}")
+
         return metadata
     
     def _scrape_type2_page(self, metadata: BookMetadata, soup: BeautifulSoup, logger: log.Logger) -> BookMetadata:
@@ -310,6 +330,31 @@ class GoodreadsScraper(BaseScraper):
                 logger.info(f"ASIN scraped: {metadata.asin}")
         except Exception as e:
             logger.info(f"Exception while scraping ASIN ({metadata.input_folder}) | {e}")
+
+        # === COVER URL ===
+        try:
+            cover_url = ""
+
+            # Try JSON-LD data first
+            if jsonld and "image" in jsonld:
+                cover_url = jsonld["image"].strip()
+
+            # Fallback: Try meta og:image
+            if not cover_url:
+                meta_img = soup.find("meta", property="og:image")
+                if meta_img and meta_img.get("content"):
+                    cover_url = meta_img["content"].strip()
+
+            # Fallback: look for ResponsiveImage img tag
+            if not cover_url:
+                img_tag = soup.select_one('img.ResponsiveImage')
+                if img_tag and img_tag.get("src"):
+                    cover_url = img_tag["src"].strip()
+
+            metadata.cover_url = cover_url
+            logger.info(f"Cover URL scraped: {cover_url}")
+        except Exception as e:
+            logger.info(f"No cover scraped ({metadata.input_folder}) | {e}")
 
         return metadata
     
