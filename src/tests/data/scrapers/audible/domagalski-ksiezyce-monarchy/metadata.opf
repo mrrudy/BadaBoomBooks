@@ -1,0 +1,24 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+
+<!-- Open Packaging Format (opf) File layout for audiobookshelf -->
+<!-- author, narrator, genre series, {series/volume number}, and tag can be repeated as desired -->
+
+    <dc:title>Księżyce Monarchy</dc:title>
+    <dc:subtitle>Hajmdal 2</dc:subtitle>
+    <dc:description>Nadzieja prysła. Rozleciała się w pył wraz ze zniszczoną planetą Aquaris, na której znajdowała się siedziba Federacji Terrańskiej. Po bitwie w systemie Epsilon Eridani &quot;Hajmdal&quot; kieruje się ku rubieżom Galaktyki. Ucieka przed swoim przeznaczeniem. Ucieka przed pościgiem wrogów, którzy pragną zagłady ludzkości. Cel podróży zna jedynie dowódca okrętu - admirał Nathaniel Kashtaritu. Dokąd zmierza? Czy prowadzi załogę ku zagładzie, czy ku zwycięstwu? Uszkodzony drednot nie jest w stanie przeciwstawić się flotom nieprzyjaciela. Ponadto brakuje wody, żywności i paliwa. Konieczne staje się uzupełnienie zapasów. Wybawieniem może okazać się Monarcha - olbrzymia gazowa planeta w układzie Zeta Monocerotis, wokół której krąży ponad siedemdziesiąt księżyców. Na niegościnnych globach, na pustynnych piaskach, skutych lodem powierzchniach, w tropikalnych dżunglach, na cuchnących błotem księżycach żołnierze terrańskich sił zbrojnych wypełniają misje zwiadowcze. Narażeni na niebezpieczeństwa, walcząc z siłami natury, przerażającymi stworami, tubylcami i wrogami, których obecności się nie spodziewali, trafiają na kolejne elementy tajemnicy związanej z pochodzeniem i przeznaczeniem ludzkości. Czy kapral Ezra Leahy i pozostali żołnierze z Plutonu 7 wyjdą obronną ręką z niebezpieczeństw? Czy zbliżą się do rozwiązania zagadki dziwnego posągu znalezionego w zigguracie legendarnego miasta Khon-Ma? Czy dadzą radę powstrzymać wrogów przed realizacją planów? Czy zdołają uciec przeznaczeniu? Przekonajcie się, czytając tom drugi. Podróż trwa.</dc:description>
+    <dc:creator opf:role="aut">Dariusz Domagalski</dc:creator>      <!-- author -->
+    <dc:creator opf:role="nrt">Wojciech Masiak</dc:creator>      <!-- narrator -->
+    <dc:publisher>Heraclon / storybox.pl</dc:publisher>
+    <dc:date>2019</dc:date>                           <!-- publish year -->
+    <dc:language>polish</dc:language>
+    <dc:identifier opf:scheme="ISBN"></dc:identifier>
+    <dc:identifier opf:scheme="ASIN">838146904X</dc:identifier>
+    <dc:source>https://www.audible.com/pd/Ksiyce-Monarchy-Audiobook/838146904X</dc:source> <!-- source URL for metadat -->
+    <ns0:meta name="calibre:series" content="Hajmdal" /> <!-- series -->
+    <ns0:meta name="calibre:series_index" content="2" /> <!-- volumeNumber -->
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>

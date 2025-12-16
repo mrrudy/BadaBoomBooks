@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+
+<!-- Open Packaging Format (opf) File layout for audiobookshelf -->
+<!-- author, narrator, genre series, {series/volume number}, and tag can be repeated as desired -->
+
+    <dc:title>Zaginiona</dc:title>
+    <dc:subtitle></dc:subtitle>
+    <dc:description>Na aukcji dzieł sztuki i starodruków spotykają się trzy niezwykłe kobiety, a każda z nich pragnie tylko jednego – kreślonej na pergaminie XIX wiecznej kopii starej mapy północnego Atlantyku. Do czego może prowadzić znajdujący się na koziej skórze plan Friesland? Nikt tak naprawdę nie wie, czy wyśniona wyspa istnieje naprawdę, a jeśli tak – jakie kryje w sobie niebezpieczeństwo. Przekonają się o tym alchemiczka Stanisława, jej kuzynka Katarzyna i tajemnicza studentka Anna, droga do prawdy będzie jednak prawdziwym wyzwaniem.</dc:description>
+    <dc:creator opf:role="aut">Andrzej Pilipiuk</dc:creator>      <!-- author -->
+    <dc:creator opf:role="nrt"></dc:creator>      <!-- narrator -->
+    <dc:publisher></dc:publisher>
+    <dc:date></dc:date>                           <!-- publish year -->
+    <dc:language>pol</dc:language>
+    <dc:subject>Fantasy</dc:subject>
+    <dc:subject>Urban Fantasy</dc:subject>
+    <dc:subject>Polish Literature</dc:subject>
+    <dc:subject>Audiobook</dc:subject>
+    <dc:subject>Fiction</dc:subject>
+    <dc:identifier opf:scheme="ISBN">9788379640102</dc:identifier>
+    <dc:identifier opf:scheme="ASIN"></dc:identifier>
+    <dc:source>https://www.goodreads.com/book/show/22743633-zaginiona</dc:source> <!-- source URL for metadat -->
+    <ns0:meta name="calibre:series" content="Kuzynki" /> <!-- series -->
+    <ns0:meta name="calibre:series_index" content="4" /> <!-- volumeNumber -->
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>

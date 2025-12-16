@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+
+<!-- Open Packaging Format (opf) File layout for audiobookshelf -->
+<!-- author, narrator, genre series, {series/volume number}, and tag can be repeated as desired -->
+
+    <dc:title>Początek podróży</dc:title>
+    <dc:subtitle>Hajmdal 1</dc:subtitle>
+    <dc:description>Ziemia nie stoi na krawędzi zagłady - Ziemi po prostu już nie ma. Pewnego dnia została rozsadzona w proch i pył przez nieznanego wroga. Przeżyli tylko ci, którzy w chwili katastrofy pozostawali poza granicami Układu Słonecznego - zaledwie garstka. Jednak po trzystu latach od masakry potomkowie ocalonych starają się przywrócić ludzkości dawną świetność. Korzystając z uprzejmości wysoko rozwiniętej rasy, zamieszkującej układ Epsilon Eridani, budują potężny okręt, &quot;Hajmdal&quot;, oraz planują zasiedlenie jednej z nadających się do terraformowania planet. Lecz okazuje się, że nie wszyscy są zadowoleni z takiego obrotu spraw. Istnieją bowiem w Galaktyce gatunki, którym wzrost znaczenia ludzi jest bardzo nie na rękę. A to musi prowadzić do bardzo poważnego konfliktu w skali kosmicznej. Do walki o najwyższą stawkę - przetrwanie. Czy ludzkość zdoła przetrwać kolejny zamach na swoje istnienie? Czy bohaterowie poradzą sobie w obliczu tytanicznych wyzwań? Czy &quot;Hajmdal&quot; jest ocaleniem, czy kolejną pułapką? Kto ciekaw, musi koniecznie sięgnąć po książkę.</dc:description>
+    <dc:creator opf:role="aut">Dariusz Domagalski</dc:creator>      <!-- author -->
+    <dc:creator opf:role="nrt">Wojciech Masiak</dc:creator>      <!-- narrator -->
+    <dc:publisher>Heraclon / storybox.pl</dc:publisher>
+    <dc:date>2019</dc:date>                           <!-- publish year -->
+    <dc:language>polish</dc:language>
+    
+    <dc:identifier opf:scheme="ISBN"></dc:identifier>
+    <dc:identifier opf:scheme="ASIN">8381462800</dc:identifier>
+    <dc:source>https://www.audible.com/pd/Pocztek-podroy-Audiobook/8381462800</dc:source> <!-- source URL for metadat -->
+    <ns0:meta name="calibre:series" content="Hajmdal" /> <!-- series -->
+    <ns0:meta name="calibre:series_index" content="1" /> <!-- volumeNumber -->
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>
