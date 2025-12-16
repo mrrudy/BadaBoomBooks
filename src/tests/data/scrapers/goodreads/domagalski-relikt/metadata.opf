@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+
+<!-- Open Packaging Format (opf) File layout for audiobookshelf -->
+<!-- author, narrator, genre series, {series/volume number}, and tag can be repeated as desired -->
+
+    <dc:title>Relikt</dc:title>
+    <dc:subtitle></dc:subtitle>
+    <dc:description>Okręt terrańskich sił zbrojnych „Hajmdal” przemierza kosmiczną pustkę, kierując się ku rubieżom Galaktyki. Mknie w stronę przeznaczenia. Tam gdzie według przepowiedni ma się wszystko rozstrzygnąć. Cel jest już blisko. Na wyciągnięcie ręki. Zbliża się wielka bitwa.Tymczasem „Hajmdal” dociera do układu planetarnego skolonizowanego przez Diohda. Mieszkańcy żyją w strachu przed tajemniczym okrętem widmo, który terroryzuje szlaki handlowe. Niszczy frachtowce i orbitalne bazy. Nikt nie jest w stanie go powstrzymać. Władze systemu zwracają się do admirała Nathaniela Kashtaritu z prośbą o pomoc w poskromieniu piratów. Drednot rusza na polowanie.Na bagnistej planecie Karazan terrańscy naukowcy w towarzystwie jedynie niewielkiego oddziału ochrony badają ruiny starożytnej cywilizacji. Nagle kontakt z nimi urywa się. Z misją ratunkową wyrusza Pluton 7. Sierżant Ezra Leahy pragnie jak najszybciej odkryć, co się wydarzyło. Jedną z zaginionych jest Abigail Torres.Nie wszystko jest tym, czym się wydaje. Mroczne sekrety wypełzają na światło dzienne. Załoga „Hajmdala” staje w obliczu starożytnej grozy. Admirał Kashtaritu musi podjąć trudne decyzje, zmierzyć się z prawdą i wrogiem, jakiego nikt wcześniej nie spotkał. Podróż trwa.</dc:description>
+    <dc:creator opf:role="aut">Dariusz Domagalski</dc:creator>      <!-- author -->
+    <dc:creator opf:role="nrt"></dc:creator>      <!-- narrator -->
+    <dc:publisher>Drageus Publishing House</dc:publisher>
+    <dc:date></dc:date>                           <!-- publish year -->
+    <dc:language>pol</dc:language>
+    <dc:subject>Audiobook</dc:subject>
+    <dc:identifier opf:scheme="ISBN"></dc:identifier>
+    <dc:identifier opf:scheme="ASIN">B0DM4SVQZJ</dc:identifier>
+    <dc:source>https://www.goodreads.com/book/show/56674224-relikt</dc:source> <!-- source URL for metadat -->
+    <ns0:meta name="calibre:series" content="Hajmdal" /> <!-- series -->
+    <ns0:meta name="calibre:series_index" content="5" /> <!-- volumeNumber -->
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>

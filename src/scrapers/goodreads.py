@@ -154,10 +154,13 @@ class GoodreadsScraper(BaseScraper):
         # === TITLE ===
         try:
             if data and 'name' in data:
-                title_match = re.search(r'^(.+?)(\s\(.+,\s.+\))?$', data['name'])
+                # Strip series information in parentheses like "(Series Name #N)" or "(Series Name, #N)"
+                title_match = re.search(r'^(.+?)\s*\([^)]*#[\d\.,\-]+\)$', data['name'])
                 if title_match:
                     metadata.title = title_match.group(1)
-                    logger.info(f"Title from JSON: {metadata.title}")
+                else:
+                    metadata.title = data['name']
+                logger.info(f"Title from JSON: {metadata.title}")
         except Exception as e:
             logger.info(f"No title scraped, using folder name ({metadata.input_folder}) | {e}")
             print(f" - Warning: No title scraped, using folder name: {metadata.input_folder}")
