@@ -49,11 +49,12 @@ class AudioProcessor:
             for audio_file in audio_files:
                 if self._update_single_file_tags(audio_file, metadata):
                     success_count += 1
-            
+
             log.info(f"Successfully updated ID3 tags for {success_count}/{len(audio_files)} files")
             print(f"Updated ID3 tags for {success_count}/{len(audio_files)} audio files")
-            
-            return success_count > 0
+
+            # Return True only if ALL files were updated successfully
+            return success_count == len(audio_files)
             
         except Exception as e:
             log.error(f"Error updating ID3 tags for {metadata.input_folder}: {e}")
@@ -78,8 +79,9 @@ class AudioProcessor:
         """Update ID3 tags for MP3 files."""
         try:
             from mutagen.easyid3 import EasyID3
-            from mutagen.id3 import ID3, COMM, TDRC
-            
+            from mutagen.id3 import ID3, ID3NoHeaderError, COMM, TDRC
+            from mutagen.mp3 import MP3
+
             # Prepare tag values
             title = metadata.get_safe_title()
             author = metadata.get_safe_author()
@@ -87,41 +89,52 @@ class AudioProcessor:
             genre = metadata.genres
             date_value = metadata.get_publication_date()
             language = metadata.language or 'eng'
-            
+
             # Build comment with ASIN/ISBN prefix if available
             comment = self._build_comment_field(metadata)
-            
+
+            # Try to load existing ID3 tags, create new ones if they don't exist
+            try:
+                audio = EasyID3(str(file_path))
+            except ID3NoHeaderError:
+                # File has no ID3 tags - create new ones
+                log.debug(f"No ID3 tags found in {file_path}, creating new tags")
+                audio = MP3(str(file_path))
+                audio.add_tags()
+                audio.save()
+                # Now load as EasyID3
+                audio = EasyID3(str(file_path))
+
             # Update easy ID3 tags
-            audio = EasyID3(str(file_path))
             audio['title'] = title
             audio['artist'] = author
             audio['album'] = album
-            
+
             if genre:
                 audio['genre'] = genre
             if date_value:
                 audio['date'] = date_value
             if language:
                 audio['language'] = language
-            
+
             audio.save()
-            
+
             # Add advanced tags using full ID3
             id3 = ID3(str(file_path))
-            
+
             # Add comment with language code
             comm_lang = language if len(language) == 3 else 'eng'
             id3.add(COMM(encoding=3, lang=comm_lang, desc='desc', text=comment))
-            
+
             # Add date if available
             if date_value:
                 id3.add(TDRC(encoding=3, text=date_value))
-            
+
             id3.save()
-            
+
             log.debug(f"Updated ID3 tags for: {file_path}")
             return True
-            
+
         except ImportError:
             log.error("Mutagen library not available for ID3 tag updates")
             return False
