@@ -11,8 +11,8 @@
     <dc:description>Na aukcji dzieł sztuki i starodruków spotykają się trzy niezwykłe kobiety, a każda z nich pragnie tylko jednego – kreślonej na pergaminie XIX wiecznej kopii starej mapy północnego Atlantyku. Do czego może prowadzić znajdujący się na koziej skórze plan Friesland? Nikt tak naprawdę nie wie, czy wyśniona wyspa istnieje naprawdę, a jeśli tak – jakie kryje w sobie niebezpieczeństwo. Przekonają się o tym alchemiczka Stanisława, jej kuzynka Katarzyna i tajemnicza studentka Anna, droga do prawdy będzie jednak prawdziwym wyzwaniem.</dc:description>
     <dc:creator opf:role="aut">Andrzej Pilipiuk</dc:creator>      <!-- author -->
     <dc:creator opf:role="nrt"></dc:creator>      <!-- narrator -->
-    <dc:publisher></dc:publisher>
-    <dc:date></dc:date>                           <!-- publish year -->
+    <dc:publisher>Fabryka Słów</dc:publisher>
+    <dc:date>2014-10-08</dc:date>                           <!-- publish year, orgin: October 8, 2014 -->
     <dc:language>pol</dc:language>
     <dc:subject>Fantasy</dc:subject>
     <dc:subject>Urban Fantasy</dc:subject>
@@ -20,7 +20,7 @@
     <dc:subject>Audiobook</dc:subject>
     <dc:subject>Fiction</dc:subject>
     <dc:identifier opf:scheme="ISBN">9788379640102</dc:identifier>
-    <dc:identifier opf:scheme="ASIN"></dc:identifier>
+    <dc:identifier opf:scheme="ASIN">8379640101</dc:identifier>
     <dc:source>https://www.goodreads.com/book/show/22743633-zaginiona</dc:source> <!-- source URL for metadat -->
     <ns0:meta name="calibre:series" content="Kuzynki" /> <!-- series -->
     <ns0:meta name="calibre:series_index" content="4" /> <!-- volumeNumber -->

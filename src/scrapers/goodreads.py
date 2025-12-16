@@ -7,6 +7,7 @@ This module handles scraping metadata from Goodreads book pages.
 import json
 import re
 import logging as log
+from datetime import datetime
 from bs4 import BeautifulSoup
 
 from .base import BaseScraper
@@ -232,19 +233,71 @@ class GoodreadsScraper(BaseScraper):
             isbn = None
             if jsonld and "isbn" in jsonld:
                 isbn = jsonld["isbn"]
-            
+
             if not isbn:
                 html_text = str(soup)
                 isbn_match = re.search(r'"isbn"\s*:\s*"(\d+)"', html_text)
                 if isbn_match:
                     isbn = isbn_match.group(1)
-            
+
             if isbn:
                 metadata.isbn = isbn
                 logger.info(f"ISBN scraped: {isbn}")
         except Exception as e:
             logger.info(f"Exception while scraping ISBN ({metadata.input_folder}) | {e}")
-        
+
+        # === PUBLISHER ===
+        try:
+            html_text = str(soup)
+            # Try simple key-value format first
+            publisher_match = re.search(r'"publisher"\s*:\s*"([^"]+)"', html_text)
+            if not publisher_match:
+                # Try nested object format
+                publisher_match = re.search(r'"publisher":\s*{[^}]*"name":"([^"]+)"', html_text)
+            if publisher_match:
+                metadata.publisher = publisher_match.group(1)
+                logger.info(f"Publisher scraped: {metadata.publisher}")
+        except Exception as e:
+            logger.info(f"Exception while scraping publisher ({metadata.input_folder}) | {e}")
+
+        # === PUBLISH DATE ===
+        try:
+            html_text = str(soup)
+            date_match = re.search(r'first published\s+([^<"]+)', html_text, re.IGNORECASE)
+            if date_match:
+                date_str = date_match.group(1).strip()
+                # Try to parse and convert to YYYY-MM-DD format
+                try:
+                    # Try common date formats
+                    for fmt in ['%B %d, %Y', '%b %d, %Y', '%Y-%m-%d', '%Y']:
+                        try:
+                            parsed_date = datetime.strptime(date_str, fmt)
+                            metadata.publishyear = parsed_date.strftime('%Y-%m-%d')
+                            logger.info(f"Publish date scraped and formatted: {date_str} -> {metadata.publishyear}")
+                            break
+                        except ValueError:
+                            continue
+                    else:
+                        # If no format matched, store as-is
+                        metadata.publishyear = date_str
+                        logger.info(f"Publish date scraped (unparsed): {date_str}")
+                except Exception as parse_error:
+                    # If parsing fails, store raw string
+                    metadata.publishyear = date_str
+                    logger.info(f"Publish date scraped (parse failed): {date_str}")
+        except Exception as e:
+            logger.info(f"Exception while scraping publish date ({metadata.input_folder}) | {e}")
+
+        # === ASIN ===
+        try:
+            html_text = str(soup)
+            asin_match = re.search(r'"asin"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+            if asin_match:
+                metadata.asin = asin_match.group(1)
+                logger.info(f"ASIN scraped: {metadata.asin}")
+        except Exception as e:
+            logger.info(f"Exception while scraping ASIN ({metadata.input_folder}) | {e}")
+
         return metadata
     
     def _extract_jsonld_data(self, soup: BeautifulSoup, logger: log.Logger) -> dict:

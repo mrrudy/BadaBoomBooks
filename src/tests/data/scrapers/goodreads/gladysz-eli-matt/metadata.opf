@@ -11,12 +11,12 @@
     <dc:description>Eli zostały dokładnie trzydzieści trzy dni do osiemnastych urodzin. To niewiele czasu, żeby przeżyć wszystko, o czym do tej pory marzyła, a na co nie miała odwagi. Tak powstała specjalna lista wyzwań, których absolutnie musi się podjąć. Coś nieodpowiedzialnego, coś szalonego. Coś zupełnie niepasującego do dorosłości. Ale przecież najważniejsze nie jest to, co się robi, ale z kim!Matt jest najlepszym przyjacielem jej brata. A Eli od wielu lat marzy, żeby był dla niej kimś więcej. Jak długo będzie w stanie utrzymać ten sekret? Czy odważy się zrobić pierwszy krok?Sięgnij po uroczy i pełen humoru slow burn, który tej zimy rozpali twoje serce! Zanurz się w zapachu gorącej czekolady oraz rozbrzmiewającym wokół dźwięku kolęd i poczuj szczypiący w policzki mróz. Magia świątecznego miasteczka w Szwajcarii już na ciebie czeka.</dc:description>
     <dc:creator opf:role="aut">Agata Gładysz</dc:creator>      <!-- author -->
     <dc:creator opf:role="nrt"></dc:creator>      <!-- narrator -->
-    <dc:publisher></dc:publisher>
-    <dc:date></dc:date>                           <!-- publish year -->
+    <dc:publisher>OdyseYA</dc:publisher>
+    <dc:date>2024-10-09</dc:date>                           <!-- publish year -->
     <dc:language>pol</dc:language>
     
     <dc:identifier opf:scheme="ISBN">9788324099610</dc:identifier>
-    <dc:identifier opf:scheme="ASIN"></dc:identifier>
+    <dc:identifier opf:scheme="ASIN">8324099611</dc:identifier>
     <dc:source>https://www.goodreads.com/book/show/219234274-eli-matt</dc:source> <!-- source URL for metadat -->
     <ns0:meta name="calibre:series" content="" /> <!-- series -->
     <ns0:meta name="calibre:series_index" content="" /> <!-- volumeNumber -->
