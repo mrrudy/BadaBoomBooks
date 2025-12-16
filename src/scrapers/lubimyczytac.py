@@ -67,10 +67,13 @@ class LubimyczytacScraper(BaseScraper):
         
         # === ISBN ===
         self._extract_isbn(metadata, soup, logger)
-        
+
+        # === PUBLISHER ===
+        self._extract_publisher(metadata, soup, logger)
+
         # === DATE PUBLISHED ===
         self._extract_publication_date(metadata, soup, logger)
-        
+
         # === COVER URL ===
         self._extract_cover_url(metadata, soup, logger)
         
@@ -264,26 +267,63 @@ class LubimyczytacScraper(BaseScraper):
                             break
         except Exception as e:
             logger.info(f"No ISBN scraped ({metadata.input_folder}) | {e}")
-    
+
+    def _extract_publisher(self, metadata: BookMetadata, soup: BeautifulSoup, logger: log.Logger):
+        """Extract publisher name."""
+        try:
+            publisher = ""
+
+            # Look for publisher link (a[href*="/wydawnictwo/"])
+            publisher_link = soup.select_one('a[href*="/wydawnictwo/"]')
+            if publisher_link:
+                publisher = publisher_link.get_text(strip=True)
+
+            # Fallback: look for "Wydawca:" or "Wydawnictwo:" in dt/dd pairs
+            if not publisher:
+                for dt in soup.select('dt'):
+                    dt_text = dt.get_text(strip=True).lower()
+                    if 'wydawca' in dt_text or 'wydawnictwo' in dt_text:
+                        dd = dt.find_next_sibling('dd')
+                        if dd:
+                            publisher = dd.get_text(strip=True)
+                            break
+
+            if publisher:
+                metadata.publisher = publisher
+
+        except Exception as e:
+            logger.info(f"No publisher scraped ({metadata.input_folder}) | {e}")
+
     def _extract_publication_date(self, metadata: BookMetadata, soup: BeautifulSoup, logger: log.Logger):
         """Extract publication date."""
         try:
-            # Try JSON-LD first
-            jsonld_script = soup.find("script", {"type": "application/ld+json"})
             date_published = ""
-            
-            if jsonld_script:
-                try:
-                    jsonld = json.loads(jsonld_script.get_text(strip=True))
-                    if isinstance(jsonld, dict) and "datePublished" in jsonld:
-                        date_published = jsonld["datePublished"]
-                except Exception as e:
-                    logger.info(f"Could not parse JSON-LD for datePublished: {e}")
-            
+
+            # Primary: Look for "Data wydania:" in dt/dd pairs
+            for dt in soup.select('dt'):
+                dt_text = dt.get_text(strip=True).lower()
+                if 'data wydania' in dt_text:
+                    dd = dt.find_next_sibling('dd')
+                    if dd:
+                        date_published = dd.get_text(strip=True)
+                        break
+
+            # Fallback: Try JSON-LD
+            if not date_published:
+                jsonld_script = soup.find("script", {"type": "application/ld+json"})
+                if jsonld_script:
+                    try:
+                        jsonld = json.loads(jsonld_script.get_text(strip=True))
+                        if isinstance(jsonld, dict) and "datePublished" in jsonld:
+                            date_published = jsonld["datePublished"]
+                    except Exception as e:
+                        logger.info(f"Could not parse JSON-LD for datePublished: {e}")
+
             # Store publication date if found
             if date_published:
+                metadata.publishyear = date_published.strip()
                 metadata.datepublished = date_published.strip()
-            
+
         except Exception as e:
             logger.info(f"No datePublished scraped ({metadata.input_folder}) | {e}")
     
