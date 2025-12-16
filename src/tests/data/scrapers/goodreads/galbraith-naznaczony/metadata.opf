@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+
+<!-- Open Packaging Format (opf) File layout for audiobookshelf -->
+<!-- author, narrator, genre series, {series/volume number}, and tag can be repeated as desired -->
+
+    <dc:title>Naznaczony</dc:title>
+    <dc:subtitle>The Hallmarked Man</dc:subtitle>
+    <dc:description>Sprawa niezidentyfikowanej ofiary wystawi Robin i Cormorana na najwyższą próbę.Do kogo należą okaleczone zwłoki znalezione w skarbcu sklepu ze srebrem? Policja twierdzi, że zna tożsamość ofiary. Tymczasem kobieta, która zgłasza się do Agencji Detektywistycznej Strike i Ellacott, jest przekonana, że to ciało jej chłopaka, który zniknął, zostawiając ją z niemowlęciem. Prosi o pomoc w potwierdzeniu jego tożsamości. Początkowo Cormoran nie chce przyjąć zlecenia, ale zmienia zdanie, gdy orientuje się, że śledztwo może mu pomóc zbliżyć się do Robin.Fakt, że sklep specjalizuje się w srebrnych wyrobach masońskich, wnosi do sprawy nowe, tajemnicze wątki. Ponadto okazuje się, że do profilu ofiary pasuje kilku zaginionych mężczyzn.Dochodzenie staje się równie skomplikowane, co relacja Cormorana z Robin. Kobieta wydaje się coraz bardziej zaangażowana w związek ze swoim obecnym chłopakiem, a Strike dojrzewa do wyznania jej swoich uczuć.</dc:description>
+    <dc:creator opf:role="aut">Robert Galbraith</dc:creator>      <!-- author -->
+    <dc:creator opf:role="nrt"></dc:creator>      <!-- narrator -->
+    <dc:publisher>Wydawnictwo Dolnośląskie</dc:publisher>
+    <dc:date>2025-09-02</dc:date>                           <!-- publish year -->
+    <dc:language>pol</dc:language>
+    <dc:subject>Mystery</dc:subject>
+    <dc:subject>Fiction</dc:subject>
+    <dc:subject>Crime</dc:subject>
+    <dc:subject>Audiobook</dc:subject>
+    <dc:subject>Thriller</dc:subject>
+    <dc:subject>Mystery Thriller</dc:subject>
+    <dc:subject>Detective</dc:subject>
+    <dc:identifier opf:scheme="ISBN">9788327168573</dc:identifier>
+    <dc:identifier opf:scheme="ASIN">8327168576</dc:identifier>
+    <dc:source>https://www.goodreads.com/book/show/243092710-naznaczony</dc:source> <!-- source URL for metadat -->
+    <ns0:meta name="calibre:series" content="Cormoran Strike" /> <!-- series -->
+    <ns0:meta name="calibre:series_index" content="8" /> <!-- volumeNumber -->
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>

@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+
+<!-- Open Packaging Format (opf) File layout for audiobookshelf -->
+<!-- author, narrator, genre series, {series/volume number}, and tag can be repeated as desired -->
+
+    <dc:title>Orbital</dc:title>
+    <dc:subtitle>Orbital</dc:subtitle>
+    <dc:description>A slender novel of epic power and the winner of the Booker Prize 2024, Orbital deftly snapshots one day in the lives of six women and men traveling through space. Selected for one of the last space station missions of its kind before the program is dismantled, these astronauts and cosmonauts—from America, Russia, Italy, Britain, and Japan—have left their lives behind to travel at a speed of over seventeen thousand miles an hour as the earth reels below. We glimpse moments of their earthly lives through brief communications with family, their photos and talismans; we watch them whip up dehydrated meals, float in gravity-free sleep, and exercise in regimented routines to prevent atrophying muscles; we witness them form bonds that will stand between them and utter solitude. Most of all, we are with them as they behold and record their silent blue planet. Their experiences of sixteen sunrises and sunsets and the bright, blinking constellations of the galaxy are at once breathtakingly awesome and surprisingly intimate.Profound and contemplative, Orbital is a moving elegy to our environment and planet.</dc:description>
+    <dc:creator opf:role="aut">Samantha Harvey</dc:creator>      <!-- author -->
+    <dc:creator opf:role="nrt"></dc:creator>      <!-- narrator -->
+    <dc:publisher>Atlantic Monthly Press</dc:publisher>
+    <dc:date>2023-11-02</dc:date>                           <!-- publish year -->
+    <dc:language>eng</dc:language>
+    <dc:subject>Fiction</dc:subject>
+    <dc:subject>Science Fiction</dc:subject>
+    <dc:subject>Literary Fiction</dc:subject>
+    <dc:subject>Audiobook</dc:subject>
+    <dc:subject>Book Club</dc:subject>
+    <dc:subject>Contemporary</dc:subject>
+    <dc:subject>Space</dc:subject>
+    <dc:identifier opf:scheme="ISBN">9780802161543</dc:identifier>
+    <dc:identifier opf:scheme="ASIN">0802161545</dc:identifier>
+    <dc:source>https://www.goodreads.com/book/show/123136728-orbital</dc:source> <!-- source URL for metadat -->
+    <ns0:meta name="calibre:series" content="" /> <!-- series -->
+    <ns0:meta name="calibre:series_index" content="" /> <!-- volumeNumber -->
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>

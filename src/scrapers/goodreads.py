@@ -162,6 +162,16 @@ class GoodreadsScraper(BaseScraper):
             logger.info(f"No title scraped, using folder name ({metadata.input_folder}) | {e}")
             print(f" - Warning: No title scraped, using folder name: {metadata.input_folder}")
             metadata.title = metadata.input_folder
+
+        # === SUBTITLE (Original Title) ===
+        try:
+            html_text = str(soup)
+            subtitle_match = re.search(r'"originalTitle"\s*:\s*"([^"]+)"', html_text)
+            if subtitle_match:
+                metadata.subtitle = subtitle_match.group(1)
+                logger.info(f"Subtitle (original title) scraped: {metadata.subtitle}")
+        except Exception as e:
+            logger.info(f"Exception while scraping subtitle ({metadata.input_folder}) | {e}")
         
         # === SUMMARY ===
         try:
