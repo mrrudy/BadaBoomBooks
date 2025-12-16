@@ -31,12 +31,12 @@ class AudibleScraper(BaseScraper):
     def scrape_metadata(self, metadata: BookMetadata, response, logger: log.Logger) -> BookMetadata:
         """
         Extract metadata from Audible API response.
-        
+
         Args:
             metadata: BookMetadata object to populate
             response: HTTP response from Audible API
             logger: Logger instance
-            
+
         Returns:
             Updated BookMetadata object
         """
@@ -46,8 +46,14 @@ class AudibleScraper(BaseScraper):
             logger.error(f"Failed to parse Audible API response: {e}")
             metadata.mark_as_failed(f"JSON parsing error: {e}")
             return metadata
-        
-        return self._extract_metadata_from_api_data(metadata, page, logger)
+
+        # Extract metadata from API
+        metadata = self._extract_metadata_from_api_data(metadata, page, logger)
+
+        # Fetch HTML page for genre information (not available in API)
+        metadata = self._extract_genre_from_html(metadata, logger)
+
+        return metadata
     
     def _extract_metadata_from_api_data(self, metadata: BookMetadata, page: Dict[str, Any], logger: log.Logger) -> BookMetadata:
         """Extract metadata from parsed API data."""
@@ -150,7 +156,51 @@ class AudibleScraper(BaseScraper):
                 metadata.cover_url = product_images['300']
         except Exception as e:
             logger.info(f"No cover URL in API response, leaving blank ({metadata.input_folder}) | {e}")
-        
+
+        return metadata
+
+    def _extract_genre_from_html(self, metadata: BookMetadata, logger: log.Logger) -> BookMetadata:
+        """
+        Extract genre from Audible HTML page.
+        Genre information is not available in the API, only in the HTML page
+        via digitalData.page.category.subCategory1.
+
+        Args:
+            metadata: BookMetadata object to populate
+            logger: Logger instance
+
+        Returns:
+            Updated BookMetadata object
+        """
+        try:
+            import requests
+
+            headers = {
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0'
+            }
+
+            logger.info(f"Fetching HTML page for genre: {metadata.url}")
+            response = requests.get(metadata.url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                html = response.text
+
+                # Extract genre from digitalData.page.category.subCategory1
+                pattern = r'digitalData\.page\.category\.subCategory1\s*=\s*["\']([^"\']+)["\']'
+                match = re.search(pattern, html)
+
+                if match:
+                    genre = match.group(1)
+                    metadata.genres = genre
+                    logger.info(f"Extracted genre: {genre}")
+                else:
+                    logger.info(f"No genre found in HTML ({metadata.input_folder})")
+            else:
+                logger.warning(f"Failed to fetch HTML page: HTTP {response.status_code}")
+
+        except Exception as e:
+            logger.info(f"Failed to extract genre from HTML ({metadata.input_folder}) | {e}")
+
         return metadata
 
 

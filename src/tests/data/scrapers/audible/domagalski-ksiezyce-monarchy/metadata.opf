@@ -14,6 +14,7 @@
     <dc:publisher>Heraclon / storybox.pl</dc:publisher>
     <dc:date>2019</dc:date>                           <!-- publish year -->
     <dc:language>polish</dc:language>
+    <dc:subject>Science Fiction</dc:subject>
     <dc:identifier opf:scheme="ISBN"></dc:identifier>
     <dc:identifier opf:scheme="ASIN">838146904X</dc:identifier>
     <dc:source>https://www.audible.com/pd/Ksiyce-Monarchy-Audiobook/838146904X</dc:source> <!-- source URL for metadat -->

@@ -14,7 +14,7 @@
     <dc:publisher>Heraclon / storybox.pl</dc:publisher>
     <dc:date>2019</dc:date>                           <!-- publish year -->
     <dc:language>polish</dc:language>
-    
+    <dc:subject>Science Fiction</dc:subject>
     <dc:identifier opf:scheme="ISBN"></dc:identifier>
     <dc:identifier opf:scheme="ASIN">8381462800</dc:identifier>
     <dc:source>https://www.audible.com/pd/Pocztek-podroy-Audiobook/8381462800</dc:source> <!-- source URL for metadat -->
