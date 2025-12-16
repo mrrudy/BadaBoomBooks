@@ -43,12 +43,19 @@ class LubimyczytacScraper(BaseScraper):
     
     def _extract_all_metadata(self, metadata: BookMetadata, soup: BeautifulSoup, logger: log.Logger) -> BookMetadata:
         """Extract all metadata from the parsed page."""
-        
+
+        # Detect if this is an audiobook page and extract from JSON-LD if so
+        is_audiobook = self._is_audiobook_page(metadata.url)
+        jsonld_data = None
+
+        if is_audiobook:
+            jsonld_data = self._extract_jsonld(soup, logger)
+
         # === TITLE ===
-        self._extract_title(metadata, soup, logger)
-        
+        self._extract_title(metadata, soup, logger, is_audiobook, jsonld_data)
+
         # === AUTHOR ===
-        self._extract_author(metadata, soup, logger)
+        self._extract_author(metadata, soup, logger, is_audiobook, jsonld_data)
         
         # === ORIGINAL TITLE (SUBTITLE) ===
         self._extract_original_title(metadata, soup, logger)
@@ -78,14 +85,46 @@ class LubimyczytacScraper(BaseScraper):
         self._extract_cover_url(metadata, soup, logger)
         
         return metadata
-    
-    def _extract_title(self, metadata: BookMetadata, soup: BeautifulSoup, logger: log.Logger):
+
+    def _is_audiobook_page(self, url: str) -> bool:
+        """Detect if the URL is for an audiobook page."""
+        return '/audiobook/' in url
+
+    def _extract_jsonld(self, soup: BeautifulSoup, logger: log.Logger) -> dict:
+        """Extract and parse JSON-LD structured data for audiobooks.
+
+        Note: Pages may have multiple JSON-LD blocks. We need to find the one
+        with @type="Audiobook" (not the first one which is usually Organization).
+        """
+        try:
+            jsonld_scripts = soup.find_all("script", {"type": "application/ld+json"})
+            for jsonld_script in jsonld_scripts:
+                jsonld_text = jsonld_script.get_text(strip=True)
+                jsonld_data = json.loads(jsonld_text)
+                # Find the Audiobook-specific JSON-LD
+                if isinstance(jsonld_data, dict) and jsonld_data.get("@type") == "Audiobook":
+                    return jsonld_data
+        except Exception as e:
+            logger.info(f"Could not parse JSON-LD: {e}")
+        return None
+
+    def _extract_title(self, metadata: BookMetadata, soup: BeautifulSoup, logger: log.Logger, is_audiobook: bool = False, jsonld_data: dict = None):
         """Extract book title."""
         try:
-            # Try meta og:title first (usually "Title | Author")
+            # For audiobooks, prefer JSON-LD data
+            if is_audiobook and jsonld_data and "name" in jsonld_data:
+                metadata.title = jsonld_data["name"].strip()
+                return
+
+            # Try meta og:title first (usually "Title | Author" for books, "Title" for audiobooks)
             meta_title = soup.find("meta", property="og:title")
             if meta_title and meta_title.get("content"):
-                title = meta_title["content"].split("|")[0].strip()
+                title_content = meta_title["content"]
+                # For books, split by pipe; for audiobooks, use as-is
+                if "|" in title_content and not is_audiobook:
+                    title = title_content.split("|")[0].strip()
+                else:
+                    title = title_content.strip()
                 metadata.title = title
             else:
                 # Fallback to page title
@@ -94,11 +133,22 @@ class LubimyczytacScraper(BaseScraper):
                     metadata.title = element.get_text(strip=True)
         except Exception as e:
             logger.info(f"No title scraped ({metadata.input_folder}) | {e}")
-    
-    def _extract_author(self, metadata: BookMetadata, soup: BeautifulSoup, logger: log.Logger):
+
+    def _extract_author(self, metadata: BookMetadata, soup: BeautifulSoup, logger: log.Logger, is_audiobook: bool = False, jsonld_data: dict = None):
         """Extract book author."""
         try:
-            # Try meta books:author first
+            # For audiobooks, prefer JSON-LD data
+            if is_audiobook and jsonld_data:
+                if "author" in jsonld_data:
+                    author_data = jsonld_data["author"]
+                    if isinstance(author_data, dict) and "name" in author_data:
+                        metadata.author = author_data["name"].strip()
+                        return
+                    elif isinstance(author_data, str):
+                        metadata.author = author_data.strip()
+                        return
+
+            # Try meta books:author first (exists for books, not for audiobooks)
             meta_author = soup.find("meta", property="books:author")
             if meta_author and meta_author.get("content"):
                 metadata.author = meta_author["content"].strip()

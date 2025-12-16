@@ -7,7 +7,11 @@
       "Bash(echo:*)",
       "Bash(\"C:\\Users\\rudy\\Documents\\bin\\audiobook\\BadaBoomBooks\\src\\tests\\data\\existing\\[ignore] Book Title''s - Author (Series)_\\1-one.mp3\")",
       "Bash(\"C:\\Users\\rudy\\Documents\\bin\\audiobook\\BadaBoomBooks\\src\\tests\\data\\existing\\[ignore] Book Title''s - Author (Series)_\\2-.mp3\")",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(Get-Content debug.log -Tail 100)",
+      "Bash(Select-String \"2025-12-16 22:\")",
+      "Bash(Select-Object -Last 30)"
     ]
   }
 }

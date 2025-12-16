@@ -153,3 +153,4 @@ test_weights.py
 test_zero_score_fix.py
 
 src/tests/data/expected/*
+.claude/*

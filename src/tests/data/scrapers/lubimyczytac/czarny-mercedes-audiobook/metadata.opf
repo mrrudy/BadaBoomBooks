@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:package xmlns:dc='http://purl.org/dc/elements/1.1/' xmlns:ns0='http://www.idpf.org/2007/opf' unique-identifier='BookId' version='2.0'>
+  <ns0:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+          xmlns:opf="http://www.idpf.org/2007/opf">
+
+<!-- Open Packaging Format (opf) File layout for audiobookshelf -->
+<!-- TDD Test Case: LubimyCzytac Audiobook URL Format -->
+
+    <dc:title>Czarny mercedes</dc:title>
+    <dc:subtitle></dc:subtitle>
+    <dc:description>W małych miasteczkach nigdy nic się nie dzieje. W małych miasteczkach ludzie nie zamykają na noc drzwi, nikt nie boi się spacerować po zmroku, a policjantów zajmują głównie pijani rowerzyści. Dlatego Maja nie waha się, gdy pod jej dom podjeżdża czarny mercedes. I nie zastanawia się, co podpowiedziało jej akurat tę taksówkę. Nie pamięta, że w małych miasteczkach może przetrwać to, o czym w wielkich metropoliach już dawno zapomniano. Zabobony, strachy, legendy o czarnych samochodach, których kierowcy porywali przechodniów prosto z ulic. Przypomni sobie. Storytel Original przestawia „Czarnego mercedesa" Marcina Mortki, czyli polską historię w międzynarodowym projekcie grozy, w ramach którego wspólnie straszyć Was będą również autorzy i autorki z Danii, Holandii, Finlandii, Egiptu, Indii, Hiszpanii i Wielkiej Brytanii. Czyta: Magda Karel Dostępne wyłącznie w Storytel.</dc:description>
+    <dc:creator opf:role="aut">Marcin Mortka</dc:creator>      <!-- author -->
+    <dc:creator opf:role="nrt"></dc:creator>      <!-- narrator -->
+    <dc:publisher>Storytel Original</dc:publisher>
+    <dc:date>2018-10-31</dc:date>                           <!-- publish year -->
+    <dc:language>pol</dc:language>
+    <dc:subject>horror</dc:subject>
+    <dc:identifier opf:scheme="ISBN">9789178605101</dc:identifier>
+    <dc:identifier opf:scheme="ASIN"></dc:identifier>
+    <dc:source>https://lubimyczytac.pl/audiobook/4877536/czarny-mercedes</dc:source> <!-- source URL for metadata -->
+    <ns0:meta name="calibre:series" content="" /> <!-- series -->
+    <ns0:meta name="calibre:series_index" content="0" /> <!-- volumeNumber -->
+    <dc:tag></dc:tag>
+  </ns0:metadata>
+</ns0:package>
