@@ -19,13 +19,15 @@ from src.tests.utils.diff_reporter import format_diff_report
 @pytest.mark.integration
 @pytest.mark.requires_network
 @pytest.mark.scraper
-def test_lubimyczytac_scraper_regression_all_samples(
-    lubimyczytac_samples,
+@pytest.mark.parametrize("service", ["lubimyczytac", "audible", "goodreads"])
+def test_scraper_regression_all_samples(
+    service,
+    all_scraper_samples,
     metadata_processor,
     cleanup_queue_ini
 ):
     """
-    Comprehensive regression test for LubimyCzytac scraper using all available samples.
+    Comprehensive regression test for any scraper using all available samples.
 
     For each sample:
     1. Read reference metadata from OPF file
@@ -35,17 +37,24 @@ def test_lubimyczytac_scraper_regression_all_samples(
     5. Report differences
 
     Usage:
-        python -m pytest src/tests/test_scrapers.py::test_lubimyczytac_scraper_regression_all_samples -v -s
+        # Test all samples for all services
+        python -m pytest src/tests/test_scrapers.py::test_scraper_regression_all_samples -v -s
+
+        # Test specific service
+        python -m pytest src/tests/test_scrapers.py::test_scraper_regression_all_samples[lubimyczytac] -v -s
+        python -m pytest src/tests/test_scrapers.py::test_scraper_regression_all_samples[goodreads] -v -s
     """
-    if not lubimyczytac_samples:
-        pytest.skip("No LubimyCzytac samples available")
+    samples = all_scraper_samples.get(service, [])
+
+    if not samples:
+        pytest.skip(f"No {service} samples available")
 
     from src.main import BadaBoomBooksApp
 
     results = []
     all_reports = []
 
-    for opf_path in lubimyczytac_samples:
+    for opf_path in samples:
         sample_name = opf_path.parent.name
         print(f"\n{'=' * 80}")
         print(f"Testing sample: {sample_name}")
@@ -135,28 +144,30 @@ def test_lubimyczytac_scraper_regression_all_samples(
 @pytest.mark.integration
 @pytest.mark.requires_network
 @pytest.mark.scraper
-def test_lubimyczytac_scraper_regression_random_sample(
+@pytest.mark.parametrize("service", ["lubimyczytac", "audible", "goodreads"])
+def test_scraper_regression_random_sample(
+    service,
     random_sample_per_service,
     metadata_processor,
     cleanup_queue_ini
 ):
     """
-    Quick smoke test for LubimyCzytac scraper using one random sample.
+    Quick smoke test for any scraper using one random sample.
 
     This is the default test that runs as part of the main test suite.
-    For comprehensive testing, use test_lubimyczytac_scraper_regression_all_samples.
+    For comprehensive testing, use test_scraper_regression_all_samples.
 
     Usage:
         python -m pytest src/tests/ -v
     """
-    opf_path = random_sample_per_service.get('lubimyczytac')
+    opf_path = random_sample_per_service.get(service)
     if not opf_path:
-        pytest.skip("No LubimyCzytac samples available")
+        pytest.skip(f"No {service} samples available")
 
     from src.main import BadaBoomBooksApp
 
     sample_name = opf_path.parent.name
-    print(f"\nTesting random LubimyCzytac sample: {sample_name}\n")
+    print(f"\nTesting random {service} sample: {sample_name}\n")
 
     # Load reference metadata
     reference_metadata = metadata_processor.read_opf_metadata(opf_path)
@@ -272,8 +283,14 @@ def test_manual_tdd_sample(
 @pytest.mark.integration
 @pytest.mark.requires_network
 @pytest.mark.scraper
+@pytest.mark.parametrize("service,invalid_url", [
+    ("lubimyczytac", "https://lubimyczytac.pl/ksiazka/99999999999/nonexistent-book"),
+    ("goodreads", "https://www.goodreads.com/book/show/99999999999-nonexistent"),
+    ("audible", "https://www.audible.com/pd/Nonexistent-Audiobook/B0XXXXXXXXXX"),
+])
 def test_scraper_handles_network_error(
-    lubimyczytac_samples,
+    service,
+    invalid_url,
     metadata_processor,
     cleanup_queue_ini
 ):
@@ -291,7 +308,7 @@ def test_scraper_handles_network_error(
     # Create metadata with invalid URL
     metadata = BookMetadata.create_empty(
         input_folder="/fake/path",
-        url="https://lubimyczytac.pl/ksiazka/99999999999/nonexistent-book"
+        url=invalid_url
     )
 
     # This should either fail gracefully or raise RequestException
@@ -306,63 +323,3 @@ def test_scraper_handles_network_error(
     except requests.exceptions.RequestException:
         # This is expected and acceptable
         pass
-
-
-@pytest.mark.integration
-@pytest.mark.requires_network
-@pytest.mark.scraper
-@pytest.mark.parametrize("service", ["audible", "goodreads"])
-def test_other_scrapers_regression(
-    service,
-    all_scraper_samples,
-    metadata_processor,
-    cleanup_queue_ini
-):
-    """
-    Placeholder test for Audible and Goodreads scrapers.
-
-    Will be used once test samples are added for these services.
-    Currently skips if no samples available.
-    """
-    samples = all_scraper_samples.get(service, [])
-
-    if not samples:
-        pytest.skip(f"No {service} samples available yet")
-
-    # When samples are available, this will run the same logic
-    # as the lubimyczytac test
-    from src.main import BadaBoomBooksApp
-
-    for opf_path in samples:
-        sample_name = opf_path.parent.name
-        print(f"\nTesting {service} sample: {sample_name}\n")
-
-        # Load reference
-        reference_metadata = metadata_processor.read_opf_metadata(opf_path)
-        assert reference_metadata is not None
-        assert reference_metadata.url
-
-        # Scrape
-        try:
-            app = BadaBoomBooksApp()
-
-            scraped_metadata = BookMetadata.create_empty(
-                input_folder=str(opf_path.parent),
-                url=reference_metadata.url
-            )
-
-            scraped_metadata = app._scrape_metadata(scraped_metadata)
-            assert not scraped_metadata.failed
-
-            # Compare
-            comparison = compare_metadata(reference_metadata, scraped_metadata)
-
-            # Report
-            report = format_diff_report(comparison, verbose=False)
-            print(report)
-
-            # Assert
-            assert comparison.is_acceptable_match()
-
-        except requests.exceptions.RequestException as e:
-            pytest.skip(f"Network error: {e}")

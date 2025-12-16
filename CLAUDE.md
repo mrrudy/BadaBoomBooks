@@ -331,8 +331,16 @@ src/tests/
 # Quick smoke test (one random sample per service)
 python -m pytest src/tests/ -v
 
-# Full LubimyCzytac regression (all samples)
-python -m pytest src/tests/test_scrapers.py::test_lubimyczytac_scraper_regression_all_samples -v -s
+# Full regression for specific service (all samples)
+python -m pytest src/tests/test_scrapers.py::test_scraper_regression_all_samples[lubimyczytac] -v -s
+python -m pytest src/tests/test_scrapers.py::test_scraper_regression_all_samples[goodreads] -v -s
+python -m pytest src/tests/test_scrapers.py::test_scraper_regression_all_samples[audible] -v -s
+
+# Full regression for all services (all samples)
+python -m pytest src/tests/test_scrapers.py::test_scraper_regression_all_samples -v -s
+
+# Test specific service with random sample
+python -m pytest src/tests/test_scrapers.py::test_scraper_regression_random_sample[goodreads] -v
 
 # Skip network tests (for offline development)
 python -m pytest src/tests/ -v -m "not requires_network"
@@ -365,10 +373,15 @@ To add new test samples from your production library:
 1. Process an audiobook with the app (ensure `<dc:source>` is populated)
 2. Copy `metadata.opf` to test directory:
 ```bash
-# Example for LubimyCzytac
-mkdir -p "src/tests/data/scrapers/lubimyczytac/author-name-volume"
+# Example for any service (LubimyCzytac, Goodreads, Audible)
+mkdir -p "src/tests/data/scrapers/SERVICE_NAME/author-title-identifier"
 cp "T:\Sorted\Books\newAudio\Sorted\Author\Series\Volume\metadata.opf" \
-   "src/tests/data/scrapers/lubimyczytac/author-name-volume/metadata.opf"
+   "src/tests/data/scrapers/SERVICE_NAME/author-title-identifier/metadata.opf"
+
+# Specific examples:
+mkdir -p "src/tests/data/scrapers/goodreads/domagalski-relikt"
+mkdir -p "src/tests/data/scrapers/audible/sanderson-mistborn"
+mkdir -p "src/tests/data/scrapers/lubimyczytac/sapkowski-wiedzmin"
 ```
 3. Verify `<dc:source>` contains URL: `grep dc:source metadata.opf`
 4. Commit to repository
