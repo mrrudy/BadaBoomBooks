@@ -1,0 +1,58 @@
+{
+  "audiobook": [],
+  "biography": [
+    "biographical",
+    "memoir",
+    "autobiography"
+  ],
+  "fantasy": [
+    "fantastyka",
+    "epic fantasy",
+    "urban fantasy",
+    "dark fantasy"
+  ],
+  "fiction": [
+    "literary fiction",
+    "contemporary fiction"
+  ],
+  "history": [
+    "historical",
+    "historia"
+  ],
+  "horror": [],
+  "mystery": [
+    "thriller",
+    "crime",
+    "detective",
+    "suspense"
+  ],
+  "nonfiction": [
+    "non-fiction",
+    "non fiction"
+  ],
+  "poland": [
+    "polska",
+    "polish",
+    "polish literature"
+  ],
+  "romance": [
+    "romans",
+    "romantasy",
+    "love",
+    "romantic"
+  ],
+  "science fiction": [
+    "sci-fy",
+    "sci-fi",
+    "science fiction & fantasy",
+    "science fiction fantasy",
+    "space",
+    "sf",
+    "sci fi"
+  ],
+  "young adult": [
+    "ya",
+    "teen",
+    "young adult fiction"
+  ]
+}

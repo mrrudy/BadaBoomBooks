@@ -13,6 +13,7 @@ from typing import Optional
 
 from ..models import BookMetadata
 from ..utils import sanitize_xml_text
+from ..utils.genre_normalizer import normalize_genres
 
 
 class MetadataProcessor:
@@ -202,14 +203,24 @@ class MetadataProcessor:
         return re.sub(re.escape(placeholder), safe_value, template)
     
     def _format_genres_for_opf(self, genres: list) -> str:
-        """Format genres list as XML elements for OPF."""
+        """
+        Format genres list as XML elements for OPF.
+
+        Applies genre normalization and mapping before formatting:
+        - Lowercases all genres
+        - Maps alternatives to canonical forms
+        - Removes duplicates
+        """
         if not genres:
             return ""
-        
+
+        # Normalize and deduplicate genres
+        normalized_genres = normalize_genres(genres)
+
         genre_xml = ""
-        for genre in genres:
+        for genre in normalized_genres:
             genre_xml += f"<dc:subject>{sanitize_xml_text(genre)}</dc:subject>\n    "
-        
+
         return genre_xml.rstrip()
     
     def _get_element_text(self, root: ET.Element, xpath: str, namespaces: dict) -> str:

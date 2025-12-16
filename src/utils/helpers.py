@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 import logging as log
 
-from .config import AUDIO_EXTENSIONS, SCRAPER_REGISTRY
-from .models import BookMetadata
+from ..config import AUDIO_EXTENSIONS, SCRAPER_REGISTRY
+from ..models import BookMetadata
 
 
 def clean_filename(text: str) -> str:
