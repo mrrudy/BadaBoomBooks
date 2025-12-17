@@ -75,6 +75,17 @@ class BadaBoomBooksApp:
             setup_environment()
             setup_logging(processing_args.debug)
 
+            # Check LLM availability if needed for genre categorization
+            # Note: --llm-select enables LLM for both candidate selection AND genre mapping
+            if processing_args.llm_select:
+                if not self._check_llm_for_genre_categorization():
+                    print("\n❌ LLM is not available but --llm-select flag is set.")
+                    print("   LLM is required for intelligent genre categorization.")
+                    print("   Either configure LLM in .env file or run without --llm-select flag.")
+                    if not processing_args.yolo:
+                        input("Press enter to exit...")
+                    return 1
+
             # Show banner
             self.cli.print_banner()
 
@@ -110,10 +121,29 @@ class BadaBoomBooksApp:
             print(f"\nUnexpected error: {e}")
             return 1
     
+    def _check_llm_for_genre_categorization(self) -> bool:
+        """
+        Check if LLM is available for genre categorization.
+
+        Returns:
+            True if LLM is available, False otherwise.
+        """
+        try:
+            from .utils.genre_normalizer import GenreNormalizer
+
+            log.info("Testing LLM connection for genre categorization...")
+            test_normalizer = GenreNormalizer(use_llm=True)
+
+            return test_normalizer.llm_available
+
+        except Exception as e:
+            log.error(f"Failed to initialize LLM for genre categorization: {e}")
+            return False
+
     def _initialize_processors(self, args: ProcessingArgs):
         """Initialize all processor instances."""
         self.file_processor = FileProcessor(args)
-        self.metadata_processor = MetadataProcessor(args.dry_run)
+        self.metadata_processor = MetadataProcessor(args.dry_run, use_llm=args.llm_select)
         self.audio_processor = AudioProcessor(args.dry_run)
 
         if args.auto_search:
@@ -600,22 +630,36 @@ class BadaBoomBooksApp:
             return metadata
 
         opf_metadata = self.metadata_processor.read_opf_metadata(opf_file)
-        
+
         if opf_metadata.failed:
             return opf_metadata
-        
+
         print(f"Read metadata from OPF for {metadata.input_folder}")
-        
+
+        # Normalize genres with LLM if enabled (even if not writing OPF)
+        # This allows building genre mappings with --from-opf --llm-select
+        if self.metadata_processor.use_llm and opf_metadata.genres:
+            try:
+                from .utils.genre_normalizer import normalize_genres
+                genre_list = opf_metadata.get_genres_list()
+                normalized_genres = normalize_genres(genre_list, use_llm=True)
+                opf_metadata.genres = ','.join(normalized_genres)
+                log.debug(f"Normalized genres with LLM: {normalized_genres}")
+            except Exception as e:
+                log.error(f"Failed to normalize genres with LLM: {e}")
+                opf_metadata.mark_as_failed(f"LLM genre categorization failed: {e}")
+                return opf_metadata
+
         # If URL is present in OPF, try to scrape missing fields
         if opf_metadata.url:
             self.progress.report_scraping_progress(opf_metadata.url, "supplement")
             scraped_metadata = self._scrape_metadata(opf_metadata)
-            
+
             # Merge scraped data into OPF data (OPF takes precedence)
             for field in ['summary', 'genres', 'cover_url', 'language']:
                 if not getattr(opf_metadata, field) and getattr(scraped_metadata, field):
                     setattr(opf_metadata, field, getattr(scraped_metadata, field))
-        
+
         return opf_metadata
     
     def _scrape_metadata(self, metadata: BookMetadata) -> BookMetadata:
