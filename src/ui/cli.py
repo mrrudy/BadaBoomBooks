@@ -54,10 +54,10 @@ Cheers to the community for providing our content and building our tools!
             help='Path to place organized folders'
         )
         parser.add_argument(
-            '-R', '--book-root', 
-            dest='book_root', 
-            metavar='BOOK_ROOT', 
-            help='Treat all first-level subdirectories of this directory as books to process'
+            '-R', '--book-root',
+            dest='book_root',
+            metavar='BOOK_ROOT',
+            help='Recursively discover audiobook folders from this root directory. When no author metadata is found, will extract author name from parent directory (e.g., "Author/Book" structure).'
         )
         
         # === OPERATION MODE ===

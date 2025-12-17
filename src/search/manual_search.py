@@ -62,8 +62,15 @@ class ManualSearchHandler:
             print("Clipboard functionality not available. Please install pyperclip.")
             return None, None
         
-        # Generate search term
-        search_term = generate_search_term(folder_path)
+        # Generate search term using book_info if available
+        if book_info and book_info.get('title') and book_info.get('author'):
+            search_term = f"{book_info['title']} by {book_info['author']}"
+        elif book_info and book_info.get('title'):
+            search_term = book_info['title']
+        elif book_info and book_info.get('author'):
+            search_term = f"{folder_path.name} by {book_info['author']}"
+        else:
+            search_term = generate_search_term(folder_path)
         
         # Display book context
         self._display_book_context(search_term, book_info)

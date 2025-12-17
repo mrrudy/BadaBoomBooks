@@ -11,7 +11,9 @@
       "Bash(ls:*)",
       "Bash(Get-Content debug.log -Tail 100)",
       "Bash(Select-String \"2025-12-16 22:\")",
-      "Bash(Select-Object -Last 30)"
+      "Bash(Select-Object -Last 30)",
+      "Bash(Select-String -Pattern \"Edgar|Adam|author|search\" -Context 1)",
+      "Bash(Select-Object -First 30)"
     ]
   }
 }

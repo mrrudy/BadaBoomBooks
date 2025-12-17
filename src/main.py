@@ -19,7 +19,6 @@ from .scrapers import AudibleScraper, GoodreadsScraper, LubimyczytacScraper
 from .processors import FileProcessor, MetadataProcessor, AudioProcessor
 from .utils import encode_for_config, decode_from_config, detect_url_site, find_metadata_opf
 
-
 class BadaBoomBooksApp:
     """Main application class that coordinates all processing."""
     
@@ -290,8 +289,17 @@ class BadaBoomBooksApp:
         from .utils import generate_search_term
         
         # Extract current book information for context
-        book_info = self._extract_book_info(folder)
-        search_term = generate_search_term(folder)
+        book_info = self._extract_book_info(folder, args.book_root)
+        
+        # Generate search term using book_info if available
+        if book_info.get('title') and book_info.get('author'):
+            search_term = f"{book_info['title']} by {book_info['author']}"
+        elif book_info.get('title'):
+            search_term = book_info['title']
+        elif book_info.get('author'):
+            search_term = f"{folder.name} by {book_info['author']}"
+        else:
+            search_term = generate_search_term(folder)
         
         self.progress.report_search_progress(search_term, "auto")
         
@@ -317,7 +325,7 @@ class BadaBoomBooksApp:
     def _manual_search_for_folder(self, folder: Path, args: ProcessingArgs) -> bool:
         """Perform manual search for a folder."""
         # Extract current book information for context
-        book_info = self._extract_book_info(folder)
+        book_info = self._extract_book_info(folder, args.book_root)
         
         site_key, url = self.manual_search.handle_manual_search_with_context(folder, book_info, args.site)
         
@@ -340,8 +348,15 @@ class BadaBoomBooksApp:
         self.config['urls'][b64_folder] = b64_url
         print(f"Queued OPF metadata for {folder.name}")
     
-    def _extract_book_info(self, folder: Path) -> dict:
-        """Extract current book information for context display."""
+    def _extract_book_info(self, folder: Path, book_root: Optional[Path] = None) -> dict:
+        """Extract current book information for context display.
+
+        Args:
+            folder: The audiobook folder to extract info from
+            book_root: If provided (when using -R flag), will attempt to extract
+                      author from parent directory when no author is found in metadata
+        """
+        
         book_info = {
             'folder_name': folder.name,
             'source': 'folder name'
@@ -351,19 +366,56 @@ class BadaBoomBooksApp:
             # Try to read existing OPF file first
             opf_file = find_metadata_opf(folder)
             if opf_file:
-                book_info.update(self._extract_from_opf(opf_file))
+                opf_info = self._extract_from_opf(opf_file)
+                book_info.update(opf_info)
                 book_info['source'] = 'existing OPF file'
-                return book_info
+                # If OPF provided author, return early (author found)
+                if 'author' in opf_info and opf_info['author']:
+                    return book_info
             
-            # Try to extract from ID3 tags
-            id3_info = self._extract_from_id3_tags(folder)
-            if id3_info:
-                book_info.update(id3_info)
-                book_info['source'] = 'ID3 tags'
-                return book_info
+            # Try to extract from ID3 tags if no author found yet
+            if 'author' not in book_info:
+                id3_info = self._extract_from_id3_tags(folder)
+                if id3_info:
+                    book_info.update(id3_info)
+                    book_info['source'] = 'ID3 tags' if book_info.get('source') == 'folder name' else book_info['source']
+                    # If ID3 provided author, return early (author found)
+                    if 'author' in id3_info and id3_info['author']:
+                        return book_info
                 
         except Exception as e:
             log.debug(f"Error extracting book info from {folder}: {e}")
+
+        # If -R flag was used and no author was found, try parent directory
+        
+        if book_root is not None and 'author' not in book_info:
+            
+            try:
+                parent_dir = folder.parent
+                
+                
+                # Resolve both paths to handle UNC vs drive letter issues
+                parent_resolved = parent_dir.resolve()
+                root_resolved = book_root.resolve()
+                
+                
+                # Extract author from parent if parent is book_root or within book_root
+                # This handles structures like: -R "Author/" discovers "Author/Book"
+                # or -R "Root/" discovers "Root/Author/Book"
+                try:
+                    is_within_root = parent_resolved.is_relative_to(root_resolved)
+                except AttributeError:
+                    # Python < 3.9 compatibility
+                    is_within_root = root_resolved in parent_resolved.parents or parent_resolved == root_resolved
+                
+                if is_within_root:
+                    book_info['author'] = parent_dir.name
+                    
+                    log.debug(f"Extracted author '{parent_dir.name}' from parent directory for {folder.name}")
+                
+            except Exception as e:
+                log.debug(f"Error extracting author from parent directory for {folder}: {e}")
+
         
         return book_info
     
@@ -711,12 +763,10 @@ class BadaBoomBooksApp:
         
         return metadata
 
-
 def main():
     """Main entry point for the application."""
     app = BadaBoomBooksApp()
     return app.run()
-
 
 if __name__ == "__main__":
     sys.exit(main())
