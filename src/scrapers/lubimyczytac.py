@@ -381,20 +381,30 @@ class LubimyczytacScraper(BaseScraper):
         """Extract cover image URL."""
         try:
             cover_url = ""
-            
-            # Try meta og:image first
-            meta_img = soup.find("meta", property="og:image")
-            if meta_img and meta_img.get("content"):
-                cover_url = meta_img["content"].strip()
-            
+            is_audiobook = self._is_audiobook_page(metadata.url)
+
+            # For audiobook pages, prefer book-cover img over og:image (which uses placeholder)
+            if is_audiobook:
+                img_tag = soup.select_one('div.book-cover img')
+                if img_tag and img_tag.get("src"):
+                    cover_url = img_tag["src"].strip()
+                    # Upgrade resolution from 170x243 to 352x500 for better quality
+                    cover_url = cover_url.replace('-170x243.jpg', '-352x500.jpg')
+
+            # For book pages (not audiobooks), try meta og:image first
+            if not cover_url:
+                meta_img = soup.find("meta", property="og:image")
+                if meta_img and meta_img.get("content"):
+                    cover_url = meta_img["content"].strip()
+
             # Fallback: look for image in the book cover section
             if not cover_url:
                 img_tag = soup.select_one('div.book-cover img')
                 if img_tag and img_tag.get("src"):
                     cover_url = img_tag["src"].strip()
-            
+
             metadata.cover_url = cover_url
-            
+
         except Exception as e:
             logger.info(f"No cover scraped ({metadata.input_folder}) | {e}")
 
