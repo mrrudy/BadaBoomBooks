@@ -11,6 +11,7 @@ from typing import List
 
 from ..models import BookMetadata
 from ..utils import find_audio_files
+from ..utils.genre_normalizer import normalize_genres
 
 
 class AudioProcessor:
@@ -86,7 +87,12 @@ class AudioProcessor:
             title = metadata.get_safe_title()
             author = metadata.get_safe_author()
             album = metadata.series or title
-            genre = metadata.genres
+
+            # Normalize genres using the genre normalizer
+            # metadata.genres is a string, use get_genres_list() to convert to list
+            raw_genres = metadata.get_genres_list()
+            normalized_genres = normalize_genres(raw_genres) if raw_genres else []
+
             date_value = metadata.get_publication_date()
             language = metadata.language or 'eng'
 
@@ -110,8 +116,16 @@ class AudioProcessor:
             audio['artist'] = author
             audio['album'] = album
 
-            if genre:
-                audio['genre'] = genre
+            # Handle genre field:
+            # - If genres exist, set normalized genres
+            # - If genres are empty, clear the genre tag completely
+            if normalized_genres:
+                audio['genre'] = normalized_genres
+            else:
+                # Clear genre tag if it exists
+                if 'genre' in audio:
+                    del audio['genre']
+
             if date_value:
                 audio['date'] = date_value
             if language:
