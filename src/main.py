@@ -8,6 +8,9 @@ all the other modules to provide the complete audiobook processing functionality
 import sys
 import configparser
 import logging as log
+import threading
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -18,6 +21,7 @@ from .search import AutoSearchEngine, ManualSearchHandler
 from .scrapers import AudibleScraper, GoodreadsScraper, LubimyczytacScraper
 from .processors import FileProcessor, MetadataProcessor, AudioProcessor
 from .utils import encode_for_config, decode_from_config, detect_url_site, find_metadata_opf
+from .queue_manager import QueueManager, huey
 
 class BadaBoomBooksApp:
     """Main application class that coordinates all processing."""
@@ -26,17 +30,20 @@ class BadaBoomBooksApp:
         self.cli = CLIHandler()
         self.progress = ProgressReporter()
         self.result = ProcessingResult()
-        
+
         # Processors
         self.file_processor = None
         self.metadata_processor = None
         self.audio_processor = None
-        
+
         # Search engines
         self.auto_search = None
         self.manual_search = ManualSearchHandler()
-        
-        # Configuration
+
+        # Queue system for parallel processing
+        self.queue_manager = QueueManager()
+
+        # Configuration (legacy queue.ini support)
         # Use only colon as delimiter to avoid conflicts with base64 '=' padding
         self.config = configparser.ConfigParser(delimiters=(':',))
         self.config.optionxform = lambda option: option
@@ -53,7 +60,7 @@ class BadaBoomBooksApp:
             Exit code (0 for success, 1 for error)
         """
         try:
-            # Parse and validate arguments
+            # Parse arguments
             processing_args = self.cli.parse_args(args)
 
             # Handle LLM connection test early (before validation)
@@ -64,15 +71,38 @@ class BadaBoomBooksApp:
                 success = test_llm_connection()
                 return 0 if success else 1
 
+            # Setup environment and logging early (needed for resume check)
+            setup_environment()
+            setup_logging(processing_args.debug)
+
+            # Show banner
+            self.cli.print_banner()
+
+            # Check for incomplete jobs BEFORE validation (resume logic)
+            # When resuming, args are loaded from database, so validation can be skipped
+            if processing_args.resume or not processing_args.yolo:
+                incomplete_jobs = self.queue_manager.get_incomplete_jobs()
+                if incomplete_jobs and len(incomplete_jobs) > 0:
+                    print(f"\n⚠️  Found {len(incomplete_jobs)} incomplete job(s) from previous run:")
+                    for i, job in enumerate(incomplete_jobs[:3]):  # Show max 3
+                        created = job['created_at']
+                        status = job['status']
+                        print(f"  {i+1}. Job {job['id'][:8]}... ({created}) - Status: {status}")
+
+                    if processing_args.resume:
+                        print("\n🔄 Auto-resuming most recent incomplete job (--resume flag)...")
+                        return self._resume_job(incomplete_jobs[0], processing_args)
+                    elif not processing_args.yolo:
+                        resume = input("\nResume most recent incomplete job? (y/n): ").lower().strip() == 'y'
+                        if resume:
+                            return self._resume_job(incomplete_jobs[0], processing_args)
+
+            # Validate arguments (only for new jobs, not resume)
             validation_errors = self.cli.validate_args(processing_args)
 
             if validation_errors:
                 self.cli.handle_validation_errors(validation_errors, processing_args.yolo)
                 return 1
-
-            # Setup environment and logging
-            setup_environment()
-            setup_logging(processing_args.debug)
 
             # Check LLM availability if needed for genre categorization
             # Note: --llm-select enables LLM for both candidate selection AND genre mapping
@@ -85,12 +115,9 @@ class BadaBoomBooksApp:
                         input("Press enter to exit...")
                     return 1
 
-            # Show banner
-            self.cli.print_banner()
-
             # Initialize processors
             self._initialize_processors(processing_args)
-            
+
             # Discover folders to process
             folders = self._discover_folders(processing_args)
             
@@ -199,40 +226,152 @@ class BadaBoomBooksApp:
         return unique_folders
     
     def _process_all_folders(self, folders: List[Path], args: ProcessingArgs) -> int:
-        """Process all folders and return exit code."""
-        self.progress.start_processing(len(folders))
-        
+        """Process all folders using parallel queue system."""
+        print('\n===================================== QUEUE BUILDING ====================================')
+
         try:
-            # Build processing queue
-            queue_success = self._build_processing_queue(folders, args)
-            if not queue_success:
-                return 1
-            
-            # Process the queue
-            process_success = self._process_queue(args)
-            
-            # Show final summary
-            self.progress.show_final_summary(self.result)
-            
-            # Determine exit code
-            if self.result.has_failures():
-                print("\n⚠️  Some books failed to process. Check the log for details.")
+            # Create job in database
+            job_id = self.queue_manager.create_job(args)
+            self.queue_manager.update_job_status(job_id, 'planning', started_at=datetime.now().isoformat())
+
+            log.info(f"Created job {job_id} with {len(folders)} folders")
+
+            # Phase 1: Build queue (sequential - discover URLs for each book)
+            for i, folder in enumerate(folders):
+                print(f"\r[{i+1}/{len(folders)}] Discovering metadata sources...    ", end='', flush=True)
+
+                try:
+                    # Get URL for this folder (existing logic from _build_processing_queue)
+                    url = self._get_url_for_folder(folder, args)
+
+                    if url:
+                        # Create task in database
+                        self.queue_manager.create_task(job_id, folder, url)
+                        log.debug(f"Queued {folder.name} with URL: {url}")
+                    else:
+                        # Skipped
+                        log.info(f"Skipped {folder.name}")
+
+                except Exception as e:
+                    log.error(f"Error queuing {folder}: {e}")
+
+            print()  # Newline after progress
+
+            # Get task count
+            progress = self.queue_manager.get_job_progress(job_id)
+            total_tasks = progress.get('total', 0)
+
+            if total_tasks == 0:
+                print("\n⚠️  No books queued for processing.")
                 if not args.yolo:
                     input("Press enter to exit...")
                 return 1
-            else:
-                print("\n✅ Processing completed successfully!")
-                if not args.yolo:
-                    input("Press enter to exit...")
-                return 0
-                
+
+            print(f"\n✓ Queued {total_tasks} books for processing")
+
+            # Phase 2: Process queue (parallel with workers)
+            self.queue_manager.update_job_status(job_id, 'processing')
+
+            # Start worker threads
+            print(f"\n🚀 Starting {args.workers} parallel workers...")
+            self._start_workers(args.workers)
+
+            # Enqueue all tasks to Huey
+            self.queue_manager.enqueue_all_tasks(job_id)
+
+            # Monitor progress and wait for completion
+            return self._monitor_job_progress(job_id, args)
+
         except Exception as e:
-            log.error(f"Error during processing: {e}")
-            print(f"Processing error: {e}")
+            log.error(f"Error during processing: {e}", exc_info=True)
+            print(f"\n❌ Processing error: {e}")
             return 1
     
+    def _get_url_for_folder(self, folder: Path, args: ProcessingArgs) -> Optional[str]:
+        """
+        Get URL or marker for a single folder.
+
+        Args:
+            folder: Folder to process
+            args: Processing arguments
+
+        Returns:
+            URL string, 'OPF' marker, or None if skipped
+        """
+        try:
+            # Check for existing OPF file if requested (but not if force refresh)
+            if args.from_opf and not args.force_refresh:
+                opf_file = find_metadata_opf(folder)
+                if opf_file:
+                    log.info(f"Using existing OPF for {folder.name}")
+                    return 'OPF'
+
+            # If force_refresh is set, treat OPF as search source
+            if args.force_refresh:
+                opf_file = find_metadata_opf(folder)
+                if opf_file:
+                    # Read OPF to get title/author/source for searching
+                    temp_metadata = self.metadata_processor.read_opf_metadata(opf_file)
+
+                    if temp_metadata.url:
+                        # Use source URL from OPF for re-scraping
+                        log.info(f"Force refreshing from source URL: {temp_metadata.url}")
+                        return temp_metadata.url
+                    else:
+                        # No source URL - fall through to normal search
+                        log.warning(f"No source URL in OPF for {folder.name}, performing search")
+
+            # Use auto-search or manual search
+            if args.auto_search:
+                from .utils import generate_search_term
+
+                # Extract current book information for context
+                book_info = self._extract_book_info(folder, args.book_root)
+
+                # Generate search term
+                if book_info.get('title') and book_info.get('author'):
+                    search_term = f"{book_info['title']} by {book_info['author']}"
+                elif book_info.get('title'):
+                    search_term = book_info['title']
+                elif book_info.get('author'):
+                    search_term = f"{folder.name} by {book_info['author']}"
+                else:
+                    search_term = generate_search_term(folder)
+
+                # Determine sites to search
+                if args.site == 'all':
+                    site_keys = list(SCRAPER_REGISTRY.keys())
+                else:
+                    site_keys = [args.site]
+
+                # Perform search
+                site_key, url, html = self.auto_search.search_and_select_with_context(
+                    search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay
+                )
+
+                if site_key and url:
+                    log.info(f"Auto-search found {SCRAPER_REGISTRY[site_key]['domain']}: {url}")
+                    return url
+                else:
+                    log.info(f"Auto-search failed for {folder.name}, skipping")
+                    return None
+
+            else:
+                # Manual search
+                book_info = self._extract_book_info(folder, args.book_root)
+                site_key, url = self.manual_search.handle_manual_search_with_context(folder, book_info, args.site)
+
+                if site_key and url:
+                    return url
+                else:
+                    return None
+
+        except Exception as e:
+            log.error(f"Error getting URL for {folder}: {e}")
+            return None
+
     def _build_processing_queue(self, folders: List[Path], args: ProcessingArgs) -> bool:
-        """Build the processing queue by gathering URLs for each folder."""
+        """Build the processing queue by gathering URLs for each folder (LEGACY - kept for compatibility)."""
         print('\n===================================== QUEUE BUILDING ====================================')
         
         for i, folder in enumerate(folders):
@@ -762,6 +901,163 @@ class BadaBoomBooksApp:
             metadata.mark_as_failed(f"Scraping error: {e}")
         
         return metadata
+
+    def _start_workers(self, num_workers: int):
+        """Start Huey worker threads for parallel processing."""
+        log.info(f"Starting {num_workers} Huey worker threads...")
+
+        for i in range(num_workers):
+            worker_thread = threading.Thread(
+                target=self._run_huey_worker,
+                name=f"HueyWorker-{i+1}",
+                daemon=True
+            )
+            worker_thread.start()
+
+        log.info(f"✓ Started {num_workers} workers")
+
+    def _run_huey_worker(self):
+        """Run Huey worker loop."""
+        try:
+            # Huey's consumer loop - processes tasks from the queue
+            from huey.consumer import Consumer
+            consumer = Consumer(huey, workers=1, periodic=False)
+            consumer.run()
+        except Exception as e:
+            log.error(f"Worker thread error: {e}")
+
+    def _monitor_job_progress(self, job_id: str, args: ProcessingArgs) -> int:
+        """
+        Monitor job progress and show real-time updates.
+
+        Args:
+            job_id: Job ID to monitor
+            args: Processing arguments
+
+        Returns:
+            Exit code (0 for success, 1 for failures)
+        """
+        print('\n===================================== PROCESSING ====================================')
+
+        last_running = 0
+        last_completed = 0
+        last_failed = 0
+
+        while True:
+            progress = self.queue_manager.get_job_progress(job_id)
+
+            total = progress.get('total', 0)
+            completed = progress.get('completed', 0)
+            failed = progress.get('failed', 0)
+            skipped = progress.get('skipped', 0)
+            running = progress.get('running', 0)
+            pending = progress.get('pending', 0)
+
+            # Show progress if changed
+            if running != last_running or completed != last_completed or failed != last_failed:
+                percent = ((completed + failed + skipped) / total * 100) if total > 0 else 0
+                print(f"\r[{percent:5.1f}%] Completed: {completed} | Failed: {failed} | Running: {running} | Pending: {pending}    ", end='', flush=True)
+
+                last_running = running
+                last_completed = completed
+                last_failed = failed
+
+            # Check if done
+            if completed + failed + skipped >= total:
+                print()  # Newline after progress
+                break
+
+            time.sleep(0.3)
+
+        # Update job status
+        self.queue_manager.update_job_status(
+            job_id,
+            'completed',
+            completed_at=datetime.now().isoformat(),
+            completed_tasks=completed,
+            failed_tasks=failed,
+            skipped_tasks=skipped
+        )
+
+        # Build result summary
+        # Note: Task results are in database, we could fetch them here if needed
+        print(f"\n✓ Processing completed: {completed} successful, {failed} failed, {skipped} skipped")
+
+        if failed > 0:
+            print(f"\n⚠️  {failed} books failed to process. Check the log for details.")
+            if not args.yolo:
+                input("Press enter to exit...")
+            return 1
+        else:
+            print("\n✅ All books processed successfully!")
+            if not args.yolo:
+                input("Press enter to exit...")
+            return 0
+
+    def _resume_job(self, job: dict, cli_args: ProcessingArgs) -> int:
+        """
+        Resume an interrupted job.
+
+        Args:
+            job: Job dictionary from database
+            cli_args: CLI arguments (for workers count, debug, etc.)
+
+        Returns:
+            Exit code
+        """
+        job_id = job['id']
+
+        print(f"\n🔄 Resuming job {job_id[:8]}...")
+        print(f"   Created: {job['created_at']}")
+        print(f"   Status: {job['status']}")
+
+        # Load stored args from database
+        import json
+        stored_args_dict = json.loads(job['args_json'])
+
+        # Convert stored args dict back to ProcessingArgs
+        # Use stored args as base, but allow CLI to override workers count
+        from pathlib import Path
+        stored_args = ProcessingArgs(
+            **{k: (Path(v) if k in ['output', 'book_root'] and v else
+                  [Path(p) for p in v] if k == 'folders' and v else v)
+               for k, v in stored_args_dict.items()}
+        )
+
+        # Override workers count if specified in CLI
+        if cli_args.workers != 4:  # 4 is default, so user explicitly set it
+            stored_args.workers = cli_args.workers
+
+        # Use stored args for processing (includes original yolo, dry_run, etc.)
+        args = stored_args
+
+        # Get task statistics
+        progress = self.queue_manager.get_job_progress(job_id)
+        print(f"   Tasks: {progress['completed']} completed, {progress['failed']} failed, {progress['running']} running, {progress['pending']} pending")
+
+        # Reset any running tasks to pending (workers died)
+        cursor = self.queue_manager.connection.cursor()
+        cursor.execute("""
+            UPDATE tasks SET status = 'pending', started_at = NULL, worker_id = NULL
+            WHERE job_id = ? AND status = 'running'
+        """, (job_id,))
+        self.queue_manager.connection.commit()
+
+        # Update job status
+        self.queue_manager.update_job_status(job_id, 'processing')
+
+        # Initialize processors
+        self._initialize_processors(args)
+
+        # Start workers
+        self._start_workers(args.workers)
+
+        # Re-enqueue pending tasks
+        print(f"\n🔄 Re-enqueueing {progress['pending']} pending tasks...")
+        self.queue_manager.enqueue_all_tasks(job_id)
+
+        # Monitor progress with stored args (includes yolo flag)
+        return self._monitor_job_progress(job_id, args)
 
 def main():
     """Main entry point for the application."""

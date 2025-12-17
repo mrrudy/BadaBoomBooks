@@ -59,6 +59,7 @@ class BookMetadata:
     failed: bool = False
     failed_exception: str = ""
     skip: bool = False
+    task_id: Optional[str] = None  # Queue task ID for parallel processing
     
     def __post_init__(self):
         """Initialize metadata with default values for critical fields."""
@@ -223,6 +224,10 @@ class ProcessingArgs:
 
     # === AUTOMATION ===
     yolo: bool = False
+
+    # === QUEUE SYSTEM ===
+    workers: int = 4  # Number of parallel workers
+    resume: bool = False  # Resume incomplete job
 
     # === DEBUG ===
     debug: bool = False

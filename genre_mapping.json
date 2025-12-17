@@ -8,6 +8,9 @@
     "autobiografia",
     "pamiętnik"
   ],
+  "classics": [
+    "klasyka"
+  ],
   "fantasy": [
     "fantastyka",
     "epic fantasy",
@@ -22,7 +25,8 @@
     "literary fiction",
     "contemporary fiction",
     "literatura obyczajowa",
-    "literatura piękna"
+    "literatura piękna",
+    "genre fiction"
   ],
   "history": [
     "historical",
@@ -47,7 +51,10 @@
     "detective",
     "suspense",
     "kryminał",
-    "sensacja"
+    "sensacja",
+    "agatha christie",
+    "mystery thriller",
+    "thriller & suspense"
   ],
   "nonfiction": [
     "non-fiction",
@@ -69,6 +76,7 @@
     "love",
     "romantic"
   ],
+  "science": [],
   "science fiction": [
     "sci-fy",
     "sci-fi",
@@ -78,7 +86,6 @@
     "sf",
     "sci fi"
   ],
-  "science": [],
   "young adult": [
     "ya",
     "teen",

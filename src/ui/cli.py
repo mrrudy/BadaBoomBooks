@@ -175,6 +175,21 @@ Cheers to the community for providing our content and building our tools!
             help='Auto-accept all prompts (processing confirmation, LLM selections, etc.) - YOLO mode'
         )
 
+        # === QUEUE SYSTEM OPTIONS ===
+        parser.add_argument(
+            '--workers',
+            type=int,
+            default=4,
+            metavar='N',
+            help='Number of parallel workers for processing (default: 4)'
+        )
+
+        parser.add_argument(
+            '--resume',
+            action='store_true',
+            help='Resume most recent incomplete job'
+        )
+
         # === DEBUG OPTIONS ===
         parser.add_argument(
             '-d', '--debug',
@@ -237,6 +252,10 @@ Cheers to the community for providing our content and building our tools!
 
             # Automation
             yolo=parsed.yolo,
+
+            # Queue system
+            workers=parsed.workers,
+            resume=parsed.resume,
 
             # Debug
             debug=parsed.debug
