@@ -3,7 +3,10 @@
   "biography": [
     "biographical",
     "memoir",
-    "autobiography"
+    "autobiography",
+    "biografia",
+    "autobiografia",
+    "pamiętnik"
   ],
   "fantasy": [
     "fantastyka",
@@ -13,7 +16,9 @@
   ],
   "fiction": [
     "literary fiction",
-    "contemporary fiction"
+    "contemporary fiction",
+    "literatura obyczajowa",
+    "literatura piękna"
   ],
   "history": [
     "historical",
@@ -24,7 +29,9 @@
     "thriller",
     "crime",
     "detective",
-    "suspense"
+    "suspense",
+    "kryminał",
+    "sensacja"
   ],
   "nonfiction": [
     "non-fiction",
@@ -53,6 +60,7 @@
   "young adult": [
     "ya",
     "teen",
-    "young adult fiction"
+    "young adult fiction",
+    "literatura młodzieżowa"
   ]
 }

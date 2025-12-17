@@ -18,9 +18,10 @@ from ..utils.genre_normalizer import normalize_genres
 
 class MetadataProcessor:
     """Handles metadata file operations."""
-    
-    def __init__(self, dry_run: bool = False):
+
+    def __init__(self, dry_run: bool = False, use_llm: bool = False):
         self.dry_run = dry_run
+        self.use_llm = use_llm
     
     def create_opf_file(self, metadata: BookMetadata, template_path: Path) -> bool:
         """
@@ -210,12 +211,13 @@ class MetadataProcessor:
         - Lowercases all genres
         - Maps alternatives to canonical forms
         - Removes duplicates
+        - Uses LLM for categorization if enabled and unmapped genres found
         """
         if not genres:
             return ""
 
-        # Normalize and deduplicate genres
-        normalized_genres = normalize_genres(genres)
+        # Normalize and deduplicate genres (with LLM if enabled)
+        normalized_genres = normalize_genres(genres, use_llm=self.use_llm)
 
         genre_xml = ""
         for genre in normalized_genres:

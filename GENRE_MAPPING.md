@@ -24,8 +24,14 @@ Genre normalization happens automatically whenever an OPF file is written. The p
    - `["Fantasy", "fantasy", "FANTASY"]` → `["fantasy"]`
    - `["Romance", "romans", "love"]` → `["romance"]` (all map to same canonical form)
 
-4. **Unknown Genres**: Genres not in the mapping file become new canonical forms
-   - If you scrape `"Dystopian"` and it's not mapped, it stays as `"dystopian"`
+4. **Unknown Genres**: Genres not in the mapping file are handled based on mode:
+   - **Without LLM** (`--llm-select` not set): Genres become new canonical forms
+     - If you scrape `"Dystopian"` and it's not mapped, it stays as `"dystopian"`
+   - **With LLM** (`--llm-select` flag set): Unmapped genres are sent to AI for categorization
+     - LLM attempts to map genre to existing categories with ≥85% confidence
+     - If match found: Genre added as alternative to existing category (e.g., `"cyberpunk"` → `"science fiction"`)
+     - If no match: Genre added as new canonical category
+     - All LLM decisions automatically update `genre_mapping.json`
 
 ### Example Transformation
 
@@ -132,14 +138,154 @@ normalized = normalizer.normalize_genres(genres)
 # Result: ["horror", "romance", "science fiction", "poland"]
 ```
 
+## LLM-Based Genre Categorization
+
+### Overview
+
+When using the `--llm-select` flag with `--opf`, BadaBoomBooks can use AI to intelligently categorize unmapped genres into your existing genre structure.
+
+### How It Works
+
+1. **Initialization Check**: When app starts with `--llm-select` + `--opf`, it tests LLM connection once
+   - If LLM unavailable, app stops with error message
+   - Connection test uses same LLM configuration as candidate selection
+
+2. **During Processing**: For each unmapped genre encountered:
+   - LLM receives your current `genre_mapping.json` content
+   - LLM evaluates if genre fits any existing categories with ≥85% confidence
+   - LLM responds with either:
+     - Canonical genre name (e.g., `"science fiction"`)
+     - `"NO_FIT"` (no confident match found)
+
+3. **Auto-Save Results**:
+   - **Match found**: Genre added as alternative to matched category
+   - **No match**: Genre added as new main category
+   - `genre_mapping.json` automatically updated after each decision
+
+4. **Error Handling**:
+   - **Incomplete responses** (e.g., `finish_reason: length`): Book skipped, genre not added to mapping
+   - **Invalid responses**: Book skipped, genre not added to mapping
+   - **API errors**: Book skipped, processing continues with next book
+   - All LLM activity logged to debug.log when `--debug` enabled
+   - Books with LLM errors are NOT modified and genres are NOT added to mapping
+
+### Configuration
+
+LLM genre categorization uses the same `.env` configuration as candidate selection:
+
+```env
+LLM_API_KEY=your-api-key-here
+LLM_MODEL=gpt-3.5-turbo          # Optional, default: gpt-3.5-turbo
+OPENAI_BASE_URL=http://localhost:1234/v1  # Optional, for local models
+```
+
+Test your LLM setup:
+```bash
+python BadaBoomBooks.py --llm-conn-test
+```
+
+### Configuration Options
+
+The following parameters can be adjusted in [src/utils/genre_normalizer.py](src/utils/genre_normalizer.py):
+
+```python
+class GenreNormalizer:
+    # Minimum confidence threshold for LLM genre categorization (0.0-1.0)
+    LLM_CONFIDENCE_THRESHOLD = 0.85  # Change to 0.90 for stricter matching
+
+    # Maximum tokens for LLM response (allows for reasoning in response)
+    LLM_MAX_TOKENS = 6000  # Increase if using models with larger context
+```
+
+**Why 6000 tokens?** This allows the LLM to include reasoning in its response (useful for models like OpenAI's o1), while ensuring complete responses for models with 20K+ context windows.
+
+### Example Usage
+
+```bash
+# Build genre mapping without processing books
+python BadaBoomBooks.py --from-opf --llm-select -R "C:\Input"
+
+# Process with LLM genre categorization
+python BadaBoomBooks.py --auto-search --llm-select --opf -O "C:\Output" -R "C:\Input"
+
+# With YOLO mode for full automation
+python BadaBoomBooks.py --auto-search --llm-select --yolo --opf --id3-tag -O "C:\Output" -R "C:\Input"
+```
+
+### Example LLM Decisions
+
+**Scenario 1: Subgenre Match**
+- Input genre: `"cyberpunk"`
+- LLM response: `"science fiction"`
+- Result: `genre_mapping.json` updated:
+  ```json
+  {
+    "science fiction": ["sci-fi", "sf", "cyberpunk"]
+  }
+  ```
+
+**Scenario 2: No Match**
+- Input genre: `"portuguese literature"`
+- LLM response: `"NO_FIT"`
+- Result: New canonical genre created:
+  ```json
+  {
+    "portuguese literature": []
+  }
+  ```
+
+**Scenario 3: Translation Match**
+- Input genre: `"historia"`
+- LLM response: `"history"`
+- Result: Alternative added (Spanish/Polish word recognized):
+  ```json
+  {
+    "history": ["historical", "historia"]
+  }
+  ```
+
+**Scenario 4: Related Genre**
+- Input genre: `"cozy mystery"`
+- LLM response: `"mystery"`
+- Result: Alternative added:
+  ```json
+  {
+    "mystery": ["thriller", "crime", "cozy mystery"]
+  }
+  ```
+
+**Scenario 5: Incomplete Response (Error)**
+- Input genre: `"space opera"`
+- LLM response: Incomplete (finish_reason: `"length"`)
+- Result: Book skipped, genre NOT added to mapping
+- User sees: `"⚠️ Skipping book due to LLM error"`
+
+### Benefits
+
+- **Consistency**: AI maintains genre organization even with exotic/rare genres
+- **Time-saving**: No manual mapping needed for one-off genres
+- **Learning**: `genre_mapping.json` grows smarter over time
+- **Transparency**: All decisions logged and saved to mapping file
+
+### Limitations
+
+- Requires internet connection (unless using local LLM)
+- Adds processing time (1-2 seconds per unmapped genre)
+- Depends on LLM quality and configuration
+- Cannot override existing mappings (only handles unmapped genres)
+- Books with unmapped genres that cause LLM errors are skipped entirely
+- Incomplete LLM responses (due to token limits) will skip the book
+
 ## Best Practices
 
 ### Building Your Mapping
 
 1. **Start with defaults**: Let the app run and observe what genres appear in your library
 2. **Add mappings gradually**: When you notice variations, add them to the mapping file
-3. **Be consistent**: Choose canonical names that match your library management style
-4. **Use lowercase**: The system handles case automatically, but keep mapping file lowercase for clarity
+3. **Use LLM for discovery**: Enable `--llm-select` to automatically categorize new genres
+4. **Review LLM decisions**: Periodically check `genre_mapping.json` and adjust as needed
+5. **Be consistent**: Choose canonical names that match your library management style
+6. **Use lowercase**: The system handles case automatically, but keep mapping file lowercase for clarity
 
 ### Choosing Canonical Names
 
