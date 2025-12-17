@@ -12,7 +12,11 @@
     "fantastyka",
     "epic fantasy",
     "urban fantasy",
-    "dark fantasy"
+    "dark fantasy",
+    "magic",
+    "high fantasy",
+    "epic",
+    "witches"
   ],
   "fiction": [
     "literary fiction",
@@ -22,9 +26,21 @@
   ],
   "history": [
     "historical",
-    "historia"
+    "historia",
+    "powieść historyczna",
+    "historical fiction"
   ],
-  "horror": [],
+  "horror": [
+    "paranormal"
+  ],
+  "humor": [
+    "komedia",
+    "funny",
+    "comedy"
+  ],
+  "literatura dziecięca": [
+    "opowieści dla młodszych dzieci"
+  ],
   "mystery": [
     "thriller",
     "crime",
@@ -35,7 +51,12 @@
   ],
   "nonfiction": [
     "non-fiction",
-    "non fiction"
+    "non fiction",
+    "reportaż"
+  ],
+  "philosophy": [
+    "spirituality",
+    "religion"
   ],
   "poland": [
     "polska",
@@ -57,6 +78,7 @@
     "sf",
     "sci fi"
   ],
+  "science": [],
   "young adult": [
     "ya",
     "teen",
