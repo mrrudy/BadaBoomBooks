@@ -27,13 +27,10 @@ class CLIHandler:
             formatter_class=argparse.RawTextHelpFormatter,
             description='Organize audiobook folders through webscraping metadata',
             epilog=r"""
-Cheers to the community for providing our content and building our tools!
-
------------------------------------ INSTRUCTIONS --------------------------------------
 
 1) Call the script and pass it the audiobook folders you would like to process, including any optional arguments...
-    python BadaBoomBooks.py "C:\Path\To\Audiobook_folder1\" "C:\Path\To\Audiobook_folder2" ...
-    python BadaBoomBooks.py --infotxt --opf --rename --series --id3-tag --move -O 'T:\Sorted' -R 'T:\Incoming\'
+    python BadaBoomBooks.py "C:\Path\To\Audiobook_folder1" "C:\Path\To\Audiobook_folder2" ...
+    python BadaBoomBooks.py --infotxt --opf --rename --series --id3-tag --move -R 'T:\Incoming' -O 'T:\Sorted' 
 
 2) Your browser will open and perform a web search for the current book, simply select the correct web-page and copy the url to your clipboard.
 
@@ -323,19 +320,8 @@ Cheers to the community for providing our content and building our tools!
     def print_banner(self):
         """Print application banner."""
         print(fr"""
-
-=========================================================================================
-
-    ______           _      ______                      ______             _
-    | ___ \         | |     | ___ \                     | ___ \           | |
-    | |_/ / __ _  __| | __ _| |_/ / ___   ___  _ __ ___ | |_/ / ___   ___ | | _____
-    | ___ \/ _` |/ _` |/ _` | ___ \/ _ \ / _ \| '_ ` _ \| ___ \/ _ \ / _ \| |/ / __|
-    | |_/ / (_| | (_| | (_| | |_/ / (_) | (_) | | | | | | |_/ / (_) | (_) |   <\__ \
-    \____/ \__,_|\__,_|\__,_\____/ \___/ \___/|_| |_| |_\____/ \___/ \___/|_|\_\___/
-
-                            An audioBook organizer (v{__version__})
-
-=========================================================================================
+BookMeister (v{__version__})
+=========================================================================
 """)
     
     def handle_validation_errors(self, errors: List[str], yolo: bool = False):

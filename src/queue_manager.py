@@ -513,7 +513,182 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
         queue_manager.close()
 
 
-def _execute_processing_pipeline(metadata: BookMetadata, folder_path: Path, url_or_marker: str,
+def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
+                            metadata_processor, log) -> Optional[str]:
+    """
+    Discover URL for a folder using auto-search or manual search.
+
+    This function is called by workers when processing tasks with url=None.
+    It performs the same logic as BadaBoomBooksApp._get_url_for_folder().
+
+    Args:
+        folder_path: Path to the audiobook folder
+        args: ProcessingArgs with search configuration
+        metadata_processor: MetadataProcessor for reading OPF files
+        log: Logger instance
+
+    Returns:
+        URL string, 'OPF' marker, or None if skipped/failed
+    """
+    from .config import SCRAPER_REGISTRY
+    from .utils.helpers import find_metadata_opf, generate_search_term
+    from .search import AutoSearchEngine, ManualSearchHandler
+
+    try:
+        # Check for existing OPF file if requested (but not if force refresh)
+        if args.from_opf and not args.force_refresh:
+            opf_file = find_metadata_opf(folder_path)
+            if opf_file:
+                log.info(f"Using existing OPF for {folder_path.name}")
+                return 'OPF'
+
+        # If force_refresh is set, treat OPF as search source
+        if args.force_refresh:
+            opf_file = find_metadata_opf(folder_path)
+            if opf_file:
+                # Read OPF to get title/author/source for searching
+                temp_metadata = metadata_processor.read_opf_metadata(opf_file)
+
+                if temp_metadata.url:
+                    # Use source URL from OPF for re-scraping
+                    log.info(f"Force refreshing from source URL: {temp_metadata.url}")
+                    return temp_metadata.url
+                else:
+                    # No source URL - fall through to normal search
+                    log.warning(f"No source URL in OPF for {folder_path.name}, performing search")
+
+        # Use auto-search or manual search
+        if args.auto_search:
+            # Extract book info for context (simplified version - no book_root support in workers)
+            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log)
+
+            # Generate search term
+            if book_info.get('title') and book_info.get('author'):
+                search_term = f"{book_info['title']} by {book_info['author']}"
+            elif book_info.get('title'):
+                search_term = book_info['title']
+            elif book_info.get('author'):
+                search_term = f"{folder_path.name} by {book_info['author']}"
+            else:
+                search_term = generate_search_term(folder_path)
+
+            # Determine sites to search
+            if args.site == 'all':
+                site_keys = list(SCRAPER_REGISTRY.keys())
+            else:
+                site_keys = [args.site]
+
+            # Perform search
+            auto_search = AutoSearchEngine(
+                debug_enabled=args.debug,
+                enable_ai_selection=args.llm_select,
+                yolo=args.yolo
+            )
+            site_key, url, html = auto_search.search_and_select_with_context(
+                search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay
+            )
+
+            if site_key and url:
+                log.info(f"Auto-search found {SCRAPER_REGISTRY[site_key]['domain']}: {url}")
+                return url
+            else:
+                log.info(f"Auto-search failed for {folder_path.name}, skipping")
+                return None
+
+        else:
+            # Manual search
+            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log)
+            manual_search = ManualSearchHandler()
+            site_key, url = manual_search.handle_manual_search_with_context(folder_path, book_info, args.site)
+
+            if site_key and url:
+                return url
+            else:
+                return None
+
+    except Exception as e:
+        log.error(f"Error discovering URL for {folder_path.name}: {e}", exc_info=True)
+        return None
+
+
+def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log) -> dict:
+    """
+    Extract book information for URL discovery context.
+
+    Simplified version without book_root support (used in workers).
+
+    Args:
+        folder_path: Path to audiobook folder
+        metadata_processor: MetadataProcessor for reading OPF
+        log: Logger instance
+
+    Returns:
+        Dictionary with book info (folder_name, title, author, source)
+    """
+    from .utils.helpers import find_metadata_opf
+    from xml.etree import ElementTree as ET
+
+    book_info = {
+        'folder_name': folder_path.name,
+        'source': 'folder name'
+    }
+
+    try:
+        # Try to read existing OPF file first
+        opf_file = find_metadata_opf(folder_path)
+        if opf_file:
+            try:
+                tree = ET.parse(opf_file)
+                root = tree.getroot()
+                ns = {'dc': 'http://purl.org/dc/elements/1.1/'}
+
+                title_elem = root.find('.//dc:title', ns)
+                if title_elem is not None and title_elem.text:
+                    book_info['title'] = title_elem.text
+
+                author_elem = root.find('.//dc:creator', ns)
+                if author_elem is not None and author_elem.text:
+                    book_info['author'] = author_elem.text
+
+                book_info['source'] = 'existing OPF file'
+            except Exception as e:
+                log.debug(f"Error reading OPF for {folder_path.name}: {e}")
+
+        # Try ID3 tags if no author found yet
+        if 'author' not in book_info:
+            try:
+                from .utils.helpers import get_first_audio_file
+                import mutagen
+
+                audio_file = get_first_audio_file(folder_path)
+                if audio_file:
+                    audio = mutagen.File(audio_file, easy=True)
+                    if audio:
+                        if 'title' in audio and audio['title']:
+                            book_info['title'] = audio['title'][0]
+                        if 'artist' in audio and audio['artist']:
+                            book_info['author'] = audio['artist'][0]
+                        book_info['source'] = 'ID3 tags'
+            except Exception as e:
+                log.debug(f"Error reading ID3 tags for {folder_path.name}: {e}")
+
+        # Try parent directory for author if still not found
+        if 'author' not in book_info:
+            try:
+                parent_dir = folder_path.parent
+                if parent_dir and parent_dir.name:
+                    book_info['author'] = parent_dir.name
+                    log.debug(f"Extracted author '{parent_dir.name}' from parent directory for {folder_path.name}")
+            except Exception as e:
+                log.debug(f"Error extracting author from parent directory for {folder_path.name}: {e}")
+
+    except Exception as e:
+        log.debug(f"Error extracting book info from {folder_path}: {e}")
+
+    return book_info
+
+
+def _execute_processing_pipeline(metadata: BookMetadata, folder_path: Path, url_or_marker: Optional[str],
                                  args: ProcessingArgs, file_processor, metadata_processor,
                                  audio_processor, log):
     """
@@ -532,6 +707,17 @@ def _execute_processing_pipeline(metadata: BookMetadata, folder_path: Path, url_
     metadata.input_folder = str(folder_path)
 
     try:
+        # Step 0: URL Discovery (if URL is None)
+        if url_or_marker is None:
+            log.info(f"Discovering URL for {folder_path.name}...")
+            url_or_marker = _discover_url_for_folder(folder_path, args, metadata_processor, log)
+
+            if url_or_marker is None:
+                metadata.mark_as_failed("URL discovery failed or skipped by user")
+                return False
+
+            log.info(f"Discovered URL: {url_or_marker}")
+
         # Step 1: Scrape metadata
         if url_or_marker == "OPF":
             opf_file = find_metadata_opf(folder_path)

@@ -232,9 +232,10 @@ class BadaBoomBooksApp:
         return unique_folders
     
     def _process_all_folders(self, folders: List[Path], args: ProcessingArgs) -> int:
-        """Process all folders using parallel queue system."""
-        print('\n===================================== QUEUE BUILDING ====================================')
+        """Process all folders using parallel queue system with two-phase task creation."""
+        print('\n===================================== IDENTIFICATION ====================================')
 
+        job_id = None
         try:
             # Create job in database
             job_id = self.queue_manager.create_job(args)
@@ -242,71 +243,27 @@ class BadaBoomBooksApp:
 
             log.info(f"Created job {job_id} with {len(folders)} folders")
 
-            # Phase 1: Build queue (sequential - discover URLs for each book)
-            discovery_interrupted = False
+            # Phase 1: Identification - Create tasks for all folders (fast, no URL discovery yet)
             try:
                 for i, folder in enumerate(folders):
-                    print(f"\r[{i+1}/{len(folders)}] Discovering metadata sources...    ", end='', flush=True)
+                    print(f"\r[{i+1}/{len(folders)}] Identifying books for processing...    ", end='', flush=True)
 
                     try:
-                        # Get URL for this folder (existing logic from _build_processing_queue)
-                        url = self._get_url_for_folder(folder, args)
-
-                        if url:
-                            # Create task in database
-                            self.queue_manager.create_task(job_id, folder, url)
-                            log.debug(f"Queued {folder.name} with URL: {url}")
-                        else:
-                            # Skipped
-                            log.info(f"Skipped {folder.name}")
+                        # Create task without URL (URL will be discovered later)
+                        # URL is set to None initially, workers will discover it
+                        self.queue_manager.create_task(job_id, folder, url=None)
+                        log.debug(f"Identified {folder.name} for processing")
 
                     except Exception as e:
-                        log.error(f"Error queuing {folder}: {e}")
+                        log.error(f"Error identifying {folder}: {e}")
+
+                print()  # Newline after progress
 
             except KeyboardInterrupt:
-                discovery_interrupted = True
-                print("\n\n⚠️  Discovery interrupted by user.")
-
-                # Check how many tasks were created before interruption
-                progress = self.queue_manager.get_job_progress(job_id)
-                discovered_count = progress.get('total', 0)
-
-                if discovered_count == 0:
-                    print("No books were discovered before interruption.")
-                    print("Discarding incomplete job...")
-                    self.queue_manager.delete_job(job_id)
-                    if not args.yolo:
-                        input("Press enter to exit...")
-                    return 1
-
-                print(f"✓ Discovered {discovered_count} of {len(folders)} books before interruption.")
-
-                if args.yolo:
-                    # Auto-continue with partial queue in yolo mode
-                    print("--yolo mode: Continuing with partial queue...")
-                else:
-                    print("\nOptions:")
-                    print("  1. Continue processing discovered books")
-                    print("  2. Save progress and exit (resume later with --resume)")
-                    print("  3. Discard and exit")
-
-                    choice = input("\nYour choice (1-3): ").strip()
-
-                    if choice == '2':
-                        print(f"\n💾 Progress saved. Resume with: python BadaBoomBooks.py --resume")
-                        return 0
-                    elif choice == '3':
-                        print("Discarding incomplete job...")
-                        self.queue_manager.delete_job(job_id)
-                        return 1
-                    elif choice != '1':
-                        print("Invalid choice. Discarding incomplete job...")
-                        self.queue_manager.delete_job(job_id)
-                        return 1
-
-                    print("\nContinuing with discovered books...")
-
-            print()  # Newline after progress
+                # Identification interrupted - discard incomplete job
+                print("\n\n⚠️  Identification interrupted. Discarding incomplete job...")
+                self.queue_manager.delete_job(job_id)
+                raise  # Re-raise to exit application
 
             # Get task count
             progress = self.queue_manager.get_job_progress(job_id)
@@ -318,10 +275,13 @@ class BadaBoomBooksApp:
                     input("Press enter to exit...")
                 return 1
 
-            print(f"\n✓ Queued {total_tasks} books for processing")
+            print(f"\n✓ Identified {total_tasks} books for processing")
 
-            # Phase 2: Process queue (parallel with workers)
+            # Phase 2: Processing (workers will discover URLs and process books in parallel)
             self.queue_manager.update_job_status(job_id, 'processing')
+
+            # Initialize processors (needed for URL discovery in workers)
+            self._initialize_processors(args)
 
             # Start worker threads
             print(f"\n🚀 Starting {args.workers} parallel workers...")
