@@ -13,5 +13,10 @@ python-dotenv==1.0.0
 # Optional LLM support
 litellm>=1.0.0
 
+# Queue system for parallel processing
+huey>=2.4.5
+portalocker>=2.7.0
+
 # Testing
 pytest>=8.0.0
+pytest-timeout>=2.1.0

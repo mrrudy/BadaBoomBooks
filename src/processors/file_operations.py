@@ -16,10 +16,11 @@ from ..utils import clean_filename, get_folder_size, format_file_size
 
 class FileProcessor:
     """Handles file system operations for audiobook processing."""
-    
+
     def __init__(self, args: ProcessingArgs):
         self.args = args
         self.dry_run = args.dry_run
+        self.lock_manager = None  # Injected by queue system for parallel processing
     
     def process_folder_organization(self, metadata: BookMetadata) -> bool:
         """
@@ -88,9 +89,14 @@ class FileProcessor:
         
         # Create author folder
         author_folder = base_output / author_clean
-        
+
         if not self.dry_run:
-            author_folder.mkdir(parents=True, exist_ok=True)
+            # Use file lock if available (parallel processing)
+            if self.lock_manager and metadata.task_id:
+                with self.lock_manager.lock_directory(author_folder, metadata.task_id):
+                    author_folder.mkdir(parents=True, exist_ok=True)
+            else:
+                author_folder.mkdir(parents=True, exist_ok=True)
         
         # Handle series-based structure if requested
         if self.args.series and metadata.has_series_info():
@@ -101,7 +107,12 @@ class FileProcessor:
             
             series_dir = author_folder / series_clean
             if not self.dry_run:
-                series_dir.mkdir(parents=True, exist_ok=True)
+                # Use file lock if available (parallel processing)
+                if self.lock_manager and metadata.task_id:
+                    with self.lock_manager.lock_directory(series_dir, metadata.task_id):
+                        series_dir.mkdir(parents=True, exist_ok=True)
+                else:
+                    series_dir.mkdir(parents=True, exist_ok=True)
             
             final_output = series_dir / f"{volume_clean} - {title_clean}"
         else:

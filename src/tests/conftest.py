@@ -235,3 +235,47 @@ def metadata_processor():
     """
     from src.processors.metadata_operations import MetadataProcessor
     return MetadataProcessor(dry_run=False)
+
+
+# ============================================================================
+# Database Isolation for Tests
+# ============================================================================
+
+@pytest.fixture
+def test_database(tmp_path):
+    """
+    Fixture that provides an isolated test database.
+
+    Creates a temporary database file for each test to prevent interference
+    with production operations. The database is automatically cleaned up
+    after the test completes.
+
+    Args:
+        tmp_path: Pytest's built-in temporary directory fixture
+
+    Returns:
+        Path: Path to the temporary database file
+
+    Yields:
+        Path: Path to the test database (during test execution)
+    """
+    import os
+    from pathlib import Path
+
+    # Create test database in pytest's temporary directory
+    test_db_path = tmp_path / "test_badaboombooksqueue.db"
+
+    # Set environment variable to override database path
+    # This is read by QueueManager to use test database
+    old_db_path = os.environ.get('BADABOOMBOOKS_DB_PATH')
+    os.environ['BADABOOMBOOKS_DB_PATH'] = str(test_db_path)
+
+    yield test_db_path
+
+    # Cleanup: Restore original database path
+    if old_db_path is not None:
+        os.environ['BADABOOMBOOKS_DB_PATH'] = old_db_path
+    else:
+        os.environ.pop('BADABOOMBOOKS_DB_PATH', None)
+
+    # Database file is automatically cleaned up by tmp_path fixture

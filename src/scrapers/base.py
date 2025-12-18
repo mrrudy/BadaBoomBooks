@@ -13,6 +13,7 @@ from typing import Dict, Any, Tuple, Optional
 
 from ..models import BookMetadata
 from ..utils import wait_with_backoff
+from ..utils.rate_limiter import DomainRateLimiter
 
 
 class BaseScraper(ABC):
@@ -92,32 +93,38 @@ def http_request_generic(metadata: BookMetadata, logger: log.Logger,
     
     max_attempts = 5
     attempt = 1
-    
+
     while attempt <= max_attempts:
+        # Acquire domain rate limit lock to prevent concurrent requests to same domain
+        DomainRateLimiter.acquire(request_url)
+
         try:
             if url and query:
                 response = requests.get(url, params=query, headers=headers)
             else:
                 response = requests.get(request_url, headers=headers)
-            
+
             logger.info(f"HTTP status code: {response.status_code}")
             # Log response size instead of full content to keep logs manageable
             logger.debug(f"Response received: {len(response.text)} characters")
-            
+
             if response.status_code != requests.codes.ok:
                 logger.error(f"HTTP error: {response.status_code}")
+                DomainRateLimiter.release(request_url)  # Release lock before retry
                 if attempt == max_attempts:
                     metadata.mark_as_failed(f"HTTP error: {response.status_code}")
                 else:
                     wait_with_backoff(attempt)
                     attempt += 1
                     continue
-            
+
             response.raise_for_status()
+            DomainRateLimiter.release(request_url)  # Release lock on success
             return metadata, response
             
         except requests.exceptions.RequestException as exc:
             logger.error(f"HTTP request error (attempt {attempt}): {exc}")
+            DomainRateLimiter.release(request_url)  # Release lock on exception
             if attempt == max_attempts:
                 print(f"Failed to get webpage after {max_attempts} attempts, skipping {metadata.input_folder}...")
                 metadata.mark_as_failed(f"HTTP request failed: {exc}")
@@ -127,7 +134,7 @@ def http_request_generic(metadata: BookMetadata, logger: log.Logger,
                     print(f'\nBad response from webpage, retrying for up to 25 seconds...')
                 wait_with_backoff(attempt)
                 attempt += 1
-    
+
     return metadata, requests.Response()
 
 

@@ -186,6 +186,14 @@ The main processing flow in [src/main.py](src/main.py):
 - Perfect for automated workflows, cron jobs, or large batch processing
 - Example: `python BadaBoomBooks.py --auto-search --llm-select --yolo --opf --id3-tag -O "C:\Output" -R "C:\Input"`
 
+**No-Resume Mode** (`--no-resume` flag):
+- Disables resume prompts and always starts fresh job
+- Useful with `--yolo` for fully automated runs without user interaction
+- Prevents accidentally resuming incomplete jobs in automated workflows
+- When combined with `--yolo`: Completely unattended operation (no prompts at all)
+- Example: `python BadaBoomBooks.py --auto-search --yolo --no-resume --opf --id3-tag -O "C:\Output" -R "C:\Input"`
+- Note: Overrides `--resume` flag if both are specified
+
 ## Configuration Files
 
 - `queue.ini` - Processing queue (folder→URL mappings), auto-generated
@@ -291,12 +299,21 @@ python -m pytest src/tests/ -v -m integration
   - UTF-8 encoded `metadata.opf` with Polish characters (ą, ę, ć, ł, ó, ń, ś, ź, ż)
   - Empty `.mp3` stub files for testing copy/rename operations
 
+**Database Isolation:**
+Tests use isolated databases to prevent interference with production operations:
+- Environment variable `BADABOOMBOOKS_DB_PATH` overrides database location for tests
+- Each test gets a temporary database in pytest's `tmp_path`
+- Production database (`badaboombooksqueue.db`) is NEVER touched by tests
+- Tests can run while production operations are ongoing without conflicts
+- Database fixture (`test_database`) is automatically included in all integration tests
+
 **Writing New Tests:**
 1. Add test functions to appropriate `test_*.py` file in `src/tests/`
-2. Use fixtures from `conftest.py` (`expected_dir`, `existing_dir`, `cleanup_queue_ini`)
+2. Use fixtures from `conftest.py` (`expected_dir`, `existing_dir`, `cleanup_queue_ini`, `test_database`)
 3. Mark tests with appropriate markers: `@pytest.mark.integration`, `@pytest.mark.unit`, etc.
 4. Always use `--yolo` flag when running app in tests to skip interactive prompts
-5. Clean up any generated files (tests should be isolated and repeatable)
+5. Include `test_database` fixture in test parameters to enable database isolation
+6. Clean up any generated files (tests should be isolated and repeatable)
 
 **Test-Driven Development (TDD):**
 1. Write test first (define expected behavior)

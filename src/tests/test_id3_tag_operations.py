@@ -16,7 +16,7 @@ from src.main import BadaBoomBooksApp
 
 
 @pytest.mark.integration
-def test_id3_tag_creation_and_update(existing_dir, expected_dir, cleanup_queue_ini):
+def test_id3_tag_creation_and_update(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     """
     Test ID3 tag creation and update functionality.
 
@@ -128,7 +128,7 @@ def test_id3_tag_creation_and_update(existing_dir, expected_dir, cleanup_queue_i
 
 
 @pytest.mark.integration
-def test_id3_tag_partial_failure_reporting(existing_dir, expected_dir, cleanup_queue_ini):
+def test_id3_tag_partial_failure_reporting(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     """
     Test that partial ID3 tag failures are properly reported as failures.
 
@@ -171,7 +171,7 @@ def test_id3_tag_partial_failure_reporting(existing_dir, expected_dir, cleanup_q
 
 
 @pytest.mark.integration
-def test_id3_genre_normalization(existing_dir, expected_dir, cleanup_queue_ini):
+def test_id3_genre_normalization(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     """
     Test that genres are normalized when writing ID3 tags.
 
@@ -246,7 +246,7 @@ def test_id3_genre_normalization(existing_dir, expected_dir, cleanup_queue_ini):
 
 
 @pytest.mark.integration
-def test_id3_genre_clearing_when_no_source_genres(existing_dir, expected_dir, cleanup_queue_ini, tmp_path):
+def test_id3_genre_clearing_when_no_source_genres(existing_dir, expected_dir, cleanup_queue_ini, tmp_path, test_database):
     """
     Test that ID3 genre tags are cleared when source OPF has no genres.
 
@@ -364,7 +364,7 @@ def test_id3_genre_clearing_when_no_source_genres(existing_dir, expected_dir, cl
 
 
 @pytest.mark.integration
-def test_id3_genre_alternative_mapping(existing_dir, expected_dir, cleanup_queue_ini, tmp_path):
+def test_id3_genre_alternative_mapping(existing_dir, expected_dir, cleanup_queue_ini, tmp_path, test_database):
     """
     Test that alternative genre names are mapped to canonical forms in ID3 tags.
 

@@ -1,4 +1,5 @@
 {
+  "adult": [],
   "audiobook": [],
   "biography": [
     "biographical",
@@ -8,6 +9,17 @@
     "autobiografia",
     "pamiętnik"
   ],
+  "children": [
+    "opowieści dla młodszych dzieci",
+    "literatura dziecięca",
+    "childrens"
+  ],
+  "classics": [
+    "klasyka"
+  ],
+  "czech literature": [],
+  "drama & plays": [],
+  "ebooks": [],
   "fantasy": [
     "fantastyka",
     "epic fantasy",
@@ -16,19 +28,29 @@
     "magic",
     "high fantasy",
     "epic",
-    "witches"
+    "witches",
+    "supernatural",
+    "harry potter"
   ],
   "fiction": [
     "literary fiction",
     "contemporary fiction",
     "literatura obyczajowa",
-    "literatura piękna"
+    "literatura piękna",
+    "genre fiction",
+    "historical fiction",
+    "adventure",
+    "novels",
+    "short stories",
+    "stories",
+    "action & adventure",
+    "literature & fiction",
+    "contemporary"
   ],
   "history": [
     "historical",
     "historia",
-    "powieść historyczna",
-    "historical fiction"
+    "powieść historyczna"
   ],
   "horror": [
     "paranormal"
@@ -38,25 +60,36 @@
     "funny",
     "comedy"
   ],
-  "literatura dziecięca": [
-    "opowieści dla młodszych dzieci"
-  ],
+  "international": [],
+  "lgbt": [],
+  "media tie in": [],
   "mystery": [
     "thriller",
     "crime",
     "detective",
     "suspense",
     "kryminał",
-    "sensacja"
+    "sensacja",
+    "agatha christie",
+    "mystery thriller",
+    "thriller & suspense",
+    "serial killer",
+    "nordic noir"
   ],
   "nonfiction": [
     "non-fiction",
     "non fiction",
-    "reportaż"
+    "reportaż",
+    "poradniki",
+    "publicystyka literacka",
+    "eseje"
   ],
   "philosophy": [
     "spirituality",
-    "religion"
+    "religion",
+    "christian",
+    "theology",
+    "christianity"
   ],
   "poland": [
     "polska",
@@ -69,6 +102,8 @@
     "love",
     "romantic"
   ],
+  "scandinavian literature": [],
+  "science": [],
   "science fiction": [
     "sci-fy",
     "sci-fi",
@@ -76,9 +111,12 @@
     "science fiction fantasy",
     "space",
     "sf",
-    "sci fi"
+    "sci fi",
+    "post apocalyptic",
+    "star trek",
+    "star trek the next generation",
+    "space opera"
   ],
-  "science": [],
   "young adult": [
     "ya",
     "teen",
