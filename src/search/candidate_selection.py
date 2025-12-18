@@ -18,11 +18,12 @@ class CandidateSelector:
         self.enable_ai_selection = enable_ai_selection
         self.llm_scorer = None
         self.last_scored_candidates = []  # Store last scoring results for display
+        self.llm_rejected_all = False  # Track if LLM actively rejected all candidates
 
         if enable_ai_selection:
             from .llm_scoring import LLMScorer
             self.llm_scorer = LLMScorer()
-    
+
     def select_best_candidate(self, candidates: List[SearchCandidate],
                             search_term: str,
                             book_info: dict = None) -> Optional[SearchCandidate]:
@@ -43,13 +44,28 @@ class CandidateSelector:
         if len(candidates) == 1:
             return candidates[0]
 
+        # Reset rejection flag
+        self.llm_rejected_all = False
+
         # Try AI selection if enabled
         if self.enable_ai_selection:
+            # Check if LLM is actually available
+            if not self.llm_scorer or not self.llm_scorer.llm_available:
+                log.info("LLM not available, falling back to heuristics")
+                # LLM unavailable - fall back to heuristics
+                return self._heuristic_select_candidate(candidates, search_term)
+
             ai_choice = self._ai_select_candidate(candidates, search_term, book_info)
             if ai_choice is not None:
                 return ai_choice
 
-        # Fallback to heuristic selection
+            # If LLM actively rejected all candidates (flag set by _ai_select_candidate),
+            # respect that decision and return None - do NOT fall back to heuristics
+            if self.llm_rejected_all:
+                log.info("LLM rejected all candidates, respecting LLM's decision (no fallback)")
+                return None
+
+        # Fallback to heuristic selection (only when LLM not enabled or unavailable)
         return self._heuristic_select_candidate(candidates, search_term)
     
     def _ai_select_candidate(self, candidates: List[SearchCandidate],
@@ -67,7 +83,7 @@ class CandidateSelector:
             Selected candidate or None if no good match
         """
         if not self.llm_scorer or not self.llm_scorer.llm_available:
-            log.info("LLM not available, falling back to heuristics")
+            # LLM is unavailable - caller should handle fallback
             return None
 
         # Score all candidates using LLM
@@ -92,6 +108,8 @@ class CandidateSelector:
 
         if llm_score < ACCEPTANCE_THRESHOLD:
             log.info(f"Best LLM score ({llm_score:.2f}) below threshold ({ACCEPTANCE_THRESHOLD}), rejecting all")
+            # Set flag to indicate LLM actively rejected all candidates
+            self.llm_rejected_all = True
             return None
 
         log.info(f"LLM selected '{best_candidate.title}' with score {llm_score:.2f} (weighted: {final_score:.2f})")
