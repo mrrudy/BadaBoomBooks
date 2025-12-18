@@ -1,6 +1,6 @@
 {
   "adult": [],
-  "african american": [],
+  "nat. african american": [],
   "audiobook": [],
   "biography": [
     "biographical",
@@ -10,20 +10,21 @@
     "autobiografia",
     "pamiętnik"
   ],
+  "nat. british": [],
   "children": [
     "opowieści dla młodszych dzieci",
     "literatura dziecięca",
     "childrens",
     "middle grade"
   ],
+  "nat. china": [],
   "classics": [
     "klasyka"
   ],
-  "czech literature": [],
+  "nat. czech": [],
   "drama & plays": [
     "entertainment & performing arts"
   ],
-  "ebooks": [],
   "fantasy": [
     "fantastyka",
     "epic fantasy",
@@ -36,7 +37,9 @@
     "supernatural",
     "harry potter",
     "fairy tales",
-    "folk tales & myths"
+    "folk tales & myths",
+    "dragons",
+    "mythology"
   ],
   "fiction": [
     "literary fiction",
@@ -53,24 +56,30 @@
     "literature & fiction",
     "contemporary"
   ],
-  "france": [],
+  "nat. france": [],
+  "nat. german": [],
   "history": [
     "historical",
     "historia",
-    "powieść historyczna"
+    "powieść historyczna",
+    "civil war",
+    "war",
+    "medieval"
   ],
   "horror": [
-    "paranormal"
+    "paranormal",
+    "occult"
   ],
   "humor": [
     "komedia",
     "funny",
-    "comedy"
+    "comedy",
+    "satire"
   ],
   "international": [],
+  "nat. italy": [],
+  "komiksy": [],
   "lgbt": [],
-  "media tie in": [],
-  "mine": [],
   "mystery": [
     "thriller",
     "crime",
@@ -83,7 +92,8 @@
     "thriller & suspense",
     "serial killer",
     "nordic noir",
-    "crime fiction"
+    "crime fiction",
+    "espionage"
   ],
   "nonfiction": [
     "non-fiction",
@@ -93,7 +103,13 @@
     "publicystyka literacka",
     "eseje",
     "growing up & facts of life",
-    "addiction & recovery"
+    "addiction & recovery",
+    "true crime",
+    "reportage",
+    "essays",
+    "nauka o literaturze",
+    "self help",
+    "management & leadership"
   ],
   "philosophy": [
     "spirituality",
@@ -102,24 +118,40 @@
     "theology",
     "christianity",
     "filozofia",
-    "etyka"
+    "etyka",
+    "other religions",
+    "practices & sacred texts"
   ],
-  "poland": [
+  "nat. poland": [
     "polska",
     "polish",
     "polish literature"
   ],
-  "professionals & academics": [],
+  "role playing games": [],
   "romance": [
     "romans",
     "romantasy",
     "love",
-    "romantic"
+    "romantic",
+    "romantic comedy",
+    "romantic suspense"
   ],
-  "scandinavian literature": [],
+  "nat. russia": [],
+  "nat. scandinavian": [
+    "sweden",
+    "swedish literature"
+  ],
   "science": [
+    "professionals & academics",
     "informatyka",
-    "matematyka"
+    "matematyka",
+    "językoznawstwo",
+    "medicine",
+    "nauki społeczne (psychologia",
+    "socjologia",
+    "physical illness & disease",
+    "anthropology",
+    "computer science"
   ],
   "science fiction": [
     "sci-fy",
@@ -134,9 +166,24 @@
     "star trek the next generation",
     "space opera",
     "time travel",
-    "sci fi fantasy"
+    "sci fi fantasy",
+    "aliens",
+    "cyberpunk",
+    "near future",
+    "dystopia"
   ],
+  "sports": [],
   "world": [],
+  "_TO_BE_IGNORED": [
+    "writing",
+    "book club",
+    "favorites",   
+    "literature",
+    "media tie in",
+    "mine",
+    "ebooks",
+    "itd.)"
+  ],
   "young adult": [
     "ya",
     "teen",
