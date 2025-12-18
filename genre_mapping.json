@@ -1,5 +1,6 @@
 {
   "adult": [],
+  "african american": [],
   "audiobook": [],
   "biography": [
     "biographical",
@@ -12,13 +13,16 @@
   "children": [
     "opowieści dla młodszych dzieci",
     "literatura dziecięca",
-    "childrens"
+    "childrens",
+    "middle grade"
   ],
   "classics": [
     "klasyka"
   ],
   "czech literature": [],
-  "drama & plays": [],
+  "drama & plays": [
+    "entertainment & performing arts"
+  ],
   "ebooks": [],
   "fantasy": [
     "fantastyka",
@@ -30,7 +34,9 @@
     "epic",
     "witches",
     "supernatural",
-    "harry potter"
+    "harry potter",
+    "fairy tales",
+    "folk tales & myths"
   ],
   "fiction": [
     "literary fiction",
@@ -47,6 +53,7 @@
     "literature & fiction",
     "contemporary"
   ],
+  "france": [],
   "history": [
     "historical",
     "historia",
@@ -63,6 +70,7 @@
   "international": [],
   "lgbt": [],
   "media tie in": [],
+  "mine": [],
   "mystery": [
     "thriller",
     "crime",
@@ -74,7 +82,8 @@
     "mystery thriller",
     "thriller & suspense",
     "serial killer",
-    "nordic noir"
+    "nordic noir",
+    "crime fiction"
   ],
   "nonfiction": [
     "non-fiction",
@@ -82,20 +91,25 @@
     "reportaż",
     "poradniki",
     "publicystyka literacka",
-    "eseje"
+    "eseje",
+    "growing up & facts of life",
+    "addiction & recovery"
   ],
   "philosophy": [
     "spirituality",
     "religion",
     "christian",
     "theology",
-    "christianity"
+    "christianity",
+    "filozofia",
+    "etyka"
   ],
   "poland": [
     "polska",
     "polish",
     "polish literature"
   ],
+  "professionals & academics": [],
   "romance": [
     "romans",
     "romantasy",
@@ -103,7 +117,10 @@
     "romantic"
   ],
   "scandinavian literature": [],
-  "science": [],
+  "science": [
+    "informatyka",
+    "matematyka"
+  ],
   "science fiction": [
     "sci-fy",
     "sci-fi",
@@ -115,8 +132,11 @@
     "post apocalyptic",
     "star trek",
     "star trek the next generation",
-    "space opera"
+    "space opera",
+    "time travel",
+    "sci fi fantasy"
   ],
+  "world": [],
   "young adult": [
     "ya",
     "teen",

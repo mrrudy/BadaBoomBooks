@@ -156,3 +156,4 @@ src/tests/data/expected/*
 .claude/*
 badaboombooksqueue.db*
 
+legacy.old/*
