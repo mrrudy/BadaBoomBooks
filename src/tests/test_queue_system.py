@@ -54,7 +54,8 @@ def test_two_phase_task_creation(existing_dir, expected_dir, test_database):
     cursor.execute("SELECT folder_path, url FROM tasks")
     task = cursor.fetchone()
     assert task is not None, "Task should exist"
-    assert str(existing_dir) in task[0], "Task should have correct folder path"
+    # Use case-insensitive comparison for Windows paths
+    assert str(existing_dir).lower() in task[0].lower(), "Task should have correct folder path"
 
     conn.close()
 

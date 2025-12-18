@@ -964,6 +964,36 @@ class BadaBoomBooksApp:
         except Exception as e:
             log.error(f"Consumer error: {e}", exc_info=True)
 
+    def _populate_result_from_database(self, job_id: str):
+        """
+        Populate the ProcessingResult object from database task results.
+
+        This maintains backwards compatibility with tests and code that expect
+        the ProcessingResult to be populated after processing completes.
+
+        Args:
+            job_id: Job ID to fetch results for
+        """
+        # Get all tasks for this job
+        cursor = self.queue_manager.connection.cursor()
+        cursor.execute("""
+            SELECT id, folder_path, status, error
+            FROM tasks
+            WHERE job_id = ?
+        """, (job_id,))
+
+        for row in cursor.fetchall():
+            task_id, folder_path, status, error = row
+            folder_name = Path(folder_path).name if folder_path else f"task_{task_id[:8]}"
+
+            if status == 'completed':
+                # For successful tasks, we could fetch more details if needed
+                self.result.add_success(folder_name, {})
+            elif status == 'failed':
+                self.result.add_failure(folder_name, error or "Unknown error")
+            elif status == 'skipped':
+                self.result.add_skipped(folder_name)
+
     def _monitor_job_progress(self, job_id: str, args: ProcessingArgs) -> int:
         """
         Monitor job progress and show real-time updates.
@@ -1031,8 +1061,8 @@ class BadaBoomBooksApp:
             skipped_tasks=skipped
         )
 
-        # Build result summary
-        # Note: Task results are in database, we could fetch them here if needed
+        # Build result summary from database tasks
+        self._populate_result_from_database(job_id)
         print(f"\n✓ Processing completed: {completed} successful, {failed} failed, {skipped} skipped")
 
         if failed > 0:
