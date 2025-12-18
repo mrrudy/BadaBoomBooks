@@ -21,7 +21,8 @@ def test_author_folder_with_nested_books(
     all_scraper_samples,
     expected_dir,
     metadata_processor,
-    cleanup_queue_ini
+    cleanup_queue_ini,
+    test_database
 ):
     """
     Test processing an author folder containing nested book folders.
@@ -145,7 +146,8 @@ def test_author_folder_with_nested_books(
 def test_author_folder_finds_all_nested_books(
     expected_dir,
     metadata_processor,
-    cleanup_queue_ini
+    cleanup_queue_ini,
+    test_database
 ):
     """
     Test that passing an author folder discovers all nested book folders.

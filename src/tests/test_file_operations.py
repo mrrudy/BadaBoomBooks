@@ -16,7 +16,7 @@ from src.main import BadaBoomBooksApp
 
 
 @pytest.mark.integration
-def test_copy_rename_from_opf(existing_dir, expected_dir, cleanup_queue_ini):
+def test_copy_rename_from_opf(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     """
     Test complete processing pipeline: --copy --rename --from-opf.
 
@@ -139,7 +139,7 @@ def test_copy_rename_from_opf(existing_dir, expected_dir, cleanup_queue_ini):
 
 
 @pytest.mark.integration
-def test_copy_rename_from_opf_with_series(existing_dir, expected_dir, cleanup_queue_ini):
+def test_copy_rename_from_opf_with_series(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     """
     Test processing with --series flag to create series folder structure.
 
@@ -184,7 +184,7 @@ def test_copy_rename_from_opf_with_series(existing_dir, expected_dir, cleanup_qu
 
 
 @pytest.mark.integration
-def test_copy_rename_from_opf_with_trailing_slashes(existing_dir, expected_dir, cleanup_queue_ini):
+def test_copy_rename_from_opf_with_trailing_slashes(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     """
     Test complete processing pipeline with trailing slashes in directory paths.
 
@@ -246,7 +246,7 @@ def test_copy_rename_from_opf_with_trailing_slashes(existing_dir, expected_dir, 
 
 
 @pytest.mark.integration
-def test_copy_rename_from_opf_with_windows_paths(existing_dir, expected_dir, cleanup_queue_ini):
+def test_copy_rename_from_opf_with_windows_paths(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     r"""
     Test complete processing pipeline with Windows-style absolute paths.
 
@@ -320,7 +320,7 @@ def test_copy_rename_from_opf_with_windows_paths(existing_dir, expected_dir, cle
 
 
 @pytest.mark.integration
-def test_copy_rename_from_opf_with_mixed_path_separators(existing_dir, expected_dir, cleanup_queue_ini):
+def test_copy_rename_from_opf_with_mixed_path_separators(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     r"""
     Test complete processing pipeline with mixed path separators (Windows edge case).
 
@@ -394,7 +394,7 @@ def test_copy_rename_from_opf_with_mixed_path_separators(existing_dir, expected_
 
 
 @pytest.mark.integration
-def test_from_opf_with_book_root_trailing_backslash(existing_dir, expected_dir, cleanup_queue_ini):
+def test_from_opf_with_book_root_trailing_backslash(existing_dir, expected_dir, cleanup_queue_ini, test_database):
     r"""
     Test using -R (book_root) flag with trailing backslash - REAL WORLD SCENARIO.
 

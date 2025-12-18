@@ -24,7 +24,8 @@ def test_scraper_regression_all_samples(
     service,
     all_scraper_samples,
     metadata_processor,
-    cleanup_queue_ini
+    cleanup_queue_ini,
+    test_database
 ):
     """
     Comprehensive regression test for any scraper using all available samples.
@@ -149,7 +150,8 @@ def test_scraper_regression_random_sample(
     service,
     random_sample_per_service,
     metadata_processor,
-    cleanup_queue_ini
+    cleanup_queue_ini,
+    test_database
 ):
     """
     Quick smoke test for any scraper using one random sample.
@@ -210,7 +212,8 @@ def test_scraper_regression_random_sample(
 def test_manual_tdd_sample(
     scraper_test_data_dir,
     metadata_processor,
-    cleanup_queue_ini
+    cleanup_queue_ini,
+    test_database
 ):
     """
     TDD workflow test for manually created test cases.
@@ -292,7 +295,8 @@ def test_scraper_handles_network_error(
     service,
     invalid_url,
     metadata_processor,
-    cleanup_queue_ini
+    cleanup_queue_ini,
+    test_database
 ):
     """
     Test that scrapers gracefully handle network errors.

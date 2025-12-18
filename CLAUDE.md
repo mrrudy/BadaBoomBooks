@@ -291,12 +291,21 @@ python -m pytest src/tests/ -v -m integration
   - UTF-8 encoded `metadata.opf` with Polish characters (ą, ę, ć, ł, ó, ń, ś, ź, ż)
   - Empty `.mp3` stub files for testing copy/rename operations
 
+**Database Isolation:**
+Tests use isolated databases to prevent interference with production operations:
+- Environment variable `BADABOOMBOOKS_DB_PATH` overrides database location for tests
+- Each test gets a temporary database in pytest's `tmp_path`
+- Production database (`badaboombooksqueue.db`) is NEVER touched by tests
+- Tests can run while production operations are ongoing without conflicts
+- Database fixture (`test_database`) is automatically included in all integration tests
+
 **Writing New Tests:**
 1. Add test functions to appropriate `test_*.py` file in `src/tests/`
-2. Use fixtures from `conftest.py` (`expected_dir`, `existing_dir`, `cleanup_queue_ini`)
+2. Use fixtures from `conftest.py` (`expected_dir`, `existing_dir`, `cleanup_queue_ini`, `test_database`)
 3. Mark tests with appropriate markers: `@pytest.mark.integration`, `@pytest.mark.unit`, etc.
 4. Always use `--yolo` flag when running app in tests to skip interactive prompts
-5. Clean up any generated files (tests should be isolated and repeatable)
+5. Include `test_database` fixture in test parameters to enable database isolation
+6. Clean up any generated files (tests should be isolated and repeatable)
 
 **Test-Driven Development (TDD):**
 1. Write test first (define expected behavior)

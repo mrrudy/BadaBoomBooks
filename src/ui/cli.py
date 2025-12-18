@@ -320,7 +320,7 @@ class CLIHandler:
     def print_banner(self):
         """Print application banner."""
         print(fr"""
-BookMeister (v{__version__})
+book-meister (v{__version__})
 =========================================================================
 """)
     

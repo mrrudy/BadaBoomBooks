@@ -4,6 +4,7 @@ Queue management for parallel audiobook processing.
 Uses Huey task queue with SQLite backend for persistence and parallelization.
 """
 
+import os
 import uuid
 import json
 import sqlite3
@@ -19,8 +20,22 @@ from .models import BookMetadata, ProcessingArgs, ProcessingResult
 from .config import root_path
 
 
+def _get_database_path() -> Path:
+    """
+    Get the database path, respecting environment variable override for tests.
+
+    Returns:
+        Path: Database file path (production or test)
+    """
+    env_db_path = os.environ.get('BADABOOMBOOKS_DB_PATH')
+    if env_db_path:
+        return Path(env_db_path)
+    return root_path / 'badaboombooksqueue.db'
+
+
 # Initialize Huey with SQLite backend
-db_path = root_path / 'badaboombooksqueue.db'
+# Use environment variable for test isolation
+db_path = _get_database_path()
 huey = SqliteHuey(
     name='badaboombooks',
     filename=str(db_path),
@@ -36,7 +51,7 @@ class QueueManager:
 
     def __init__(self, db_path: Optional[Path] = None):
         """Initialize queue manager with database connection."""
-        self.db_path = db_path or (root_path / 'badaboombooksqueue.db')
+        self.db_path = db_path or _get_database_path()
         self.connection = None
         self._initialize_database()
 
