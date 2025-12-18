@@ -413,6 +413,72 @@ class QueueManager:
 
         log.info(f"Successfully enqueued {enqueued_count}/{len(tasks)} new tasks")
 
+    def get_jobs_for_user(self, user_id: str, status: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Get all jobs for a specific user.
+
+        Args:
+            user_id: User ID to filter by
+            status: Optional list of statuses to filter by
+
+        Returns:
+            List of job dictionaries
+        """
+        # Refresh connection to see latest updates from other processes
+        self.refresh_connection()
+
+        cursor = self.connection.cursor()
+
+        if status:
+            placeholders = ','.join(['?' for _ in status])
+            query = f"""
+                SELECT * FROM jobs
+                WHERE user_id = ? AND status IN ({placeholders})
+                ORDER BY created_at DESC
+            """
+            cursor.execute(query, [user_id] + status)
+        else:
+            cursor.execute("""
+                SELECT * FROM jobs
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+            """, (user_id,))
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_tasks_for_job(self, job_id: str, status: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Get all tasks for a specific job.
+
+        Args:
+            job_id: Job ID to get tasks for
+            status: Optional list of statuses to filter by
+
+        Returns:
+            List of task dictionaries
+        """
+        # Refresh connection to see latest updates from other processes
+        self.refresh_connection()
+
+        cursor = self.connection.cursor()
+
+        if status:
+            placeholders = ','.join(['?' for _ in status])
+            query = f"""
+                SELECT * FROM tasks
+                WHERE job_id = ? AND status IN ({placeholders})
+                ORDER BY created_at
+            """
+            cursor.execute(query, [job_id] + status)
+        else:
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE job_id = ?
+                ORDER BY created_at
+            """, (job_id,))
+
+        return [dict(row) for row in cursor.fetchall()]
+
     def close(self):
         """Close database connection."""
         if self.connection:
@@ -739,8 +805,50 @@ def _execute_processing_pipeline(metadata: BookMetadata, folder_path: Path, url_
             if not opf_file:
                 metadata.mark_as_failed("No metadata.opf found")
                 return False
-            metadata = metadata_processor.read_opf_metadata(opf_file)
-            metadata.task_id = metadata.task_id  # Preserve task_id
+
+            opf_metadata = metadata_processor.read_opf_metadata(opf_file)
+            opf_metadata.task_id = metadata.task_id  # Preserve task_id
+
+            # If URL is present in OPF, try to scrape missing fields (cover_url, summary, etc.)
+            if opf_metadata.url:
+                log.info(f"Re-scraping from OPF source URL to supplement metadata: {opf_metadata.url}")
+                site_key = detect_url_site(opf_metadata.url)
+                if site_key:
+                    try:
+                        # Preprocess URL if needed
+                        if site_key == 'audible':
+                            preprocess_audible_url(opf_metadata)
+
+                        # Make HTTP request
+                        if site_key == 'audible':
+                            scraped_metadata, response = http_request_audible_api(opf_metadata, log)
+                        else:
+                            scraped_metadata, response = http_request_generic(opf_metadata, log)
+
+                        if not scraped_metadata.failed:
+                            # Scrape metadata
+                            if site_key == 'audible':
+                                scraper = AudibleScraper()
+                            elif site_key == 'goodreads':
+                                scraper = GoodreadsScraper()
+                            elif site_key == 'lubimyczytac':
+                                scraper = LubimyczytacScraper()
+                            else:
+                                log.warning(f"Unknown site for supplemental scraping: {site_key}")
+                                scraper = None
+
+                            if scraper:
+                                scraped_metadata = scraper.scrape_metadata(scraped_metadata, response, log)
+
+                                # Merge scraped data into OPF data (OPF takes precedence)
+                                for field in ['summary', 'genres', 'cover_url', 'language']:
+                                    if not getattr(opf_metadata, field) and getattr(scraped_metadata, field):
+                                        setattr(opf_metadata, field, getattr(scraped_metadata, field))
+                                        log.debug(f"Supplemented {field} from scraping")
+                    except Exception as e:
+                        log.warning(f"Failed to supplement OPF metadata from source URL: {e}")
+
+            metadata = opf_metadata
         else:
             metadata.url = url_or_marker
             site_key = detect_url_site(metadata.url)

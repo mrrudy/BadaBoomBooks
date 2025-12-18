@@ -20,7 +20,15 @@
       "Bash(Select-String \"Worker\")",
       "Bash(Select-Object -First 10)",
       "Bash(sqlite3:*)",
-      "Bash(Select-String -Pattern \"Enqueueing|enqueued\" -Path debug.log)"
+      "Bash(Select-String -Pattern \"Enqueueing|enqueued\" -Path debug.log)",
+      "Bash(Get-Process)",
+      "Bash(Where-Object {$_ProcessName -like \"*python*\"})",
+      "Bash(Select-Object Id, ProcessName, Path)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python -c:*)",
+      "Bash(python -m pytest:*)"
     ]
   }
 }

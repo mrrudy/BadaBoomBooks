@@ -403,7 +403,8 @@ def test_id3_genre_alternative_mapping(existing_dir, expected_dir, cleanup_queue
     # According to genre_mapping.json:
     # - "sci-fi" -> "science fiction"
     # - "fantastyka" -> "fantasy"
-    # - "polska" -> "poland"
+    # - "polska" -> "nat. poland"
+    # - "romans" -> "romance"
     import re
     opf_content = re.sub(r'<dc:subject>.*?</dc:subject>\s*', '', opf_content)
 
@@ -466,8 +467,8 @@ def test_id3_genre_alternative_mapping(existing_dir, expected_dir, cleanup_queue
                 f"Expected 'science fiction' (from 'sci-fi'), got: {genres}"
             assert 'fantasy' in genres, \
                 f"Expected 'fantasy' (from 'Fantastyka'), got: {genres}"
-            assert 'poland' in genres, \
-                f"Expected 'poland' (from 'POLSKA'), got: {genres}"
+            assert 'nat. poland' in genres, \
+                f"Expected 'nat. poland' (from 'POLSKA'), got: {genres}"
             assert 'romance' in genres, \
                 f"Expected 'romance' (from 'romans'), got: {genres}"
 

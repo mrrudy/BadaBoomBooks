@@ -21,8 +21,27 @@ class LubimyczytacScraper(BaseScraper):
         super().__init__("lubimyczytac", "lubimyczytac.pl")
     
     def preprocess_url(self, metadata: BookMetadata) -> None:
-        """LubimyCzytac URLs don't need preprocessing."""
-        pass
+        """
+        Clean LubimyCzytac URLs by removing page-specific suffixes.
+
+        Examples:
+            https://lubimyczytac.pl/ksiazka/4894133/kandydat-kremla/dyskusje
+            -> https://lubimyczytac.pl/ksiazka/4894133/kandydat-kremla
+
+            https://lubimyczytac.pl/audiobook/299011/wszystkie-wskazniki-czerwone-sztuczny-stan/opinie
+            -> https://lubimyczytac.pl/audiobook/299011/wszystkie-wskazniki-czerwone-sztuczny-stan
+        """
+        if metadata.url:
+            # Pattern matches: /ksiazka/ID/slug or /audiobook/ID/slug
+            # Removes anything after the slug (like /dyskusje, /opinie, etc.)
+            cleaned_url = re.sub(
+                r'(lubimyczytac\.pl/(?:ksiazka|audiobook)/\d+/[^/]+)/.*',
+                r'\1',
+                metadata.url
+            )
+            if cleaned_url != metadata.url:
+                log.info(f"Cleaned LubimyCzytac URL: {metadata.url} -> {cleaned_url}")
+                metadata.url = cleaned_url
     
     def scrape_metadata(self, metadata: BookMetadata, response, logger: log.Logger) -> BookMetadata:
         """

@@ -1066,7 +1066,10 @@ class BadaBoomBooksApp:
         print(f"\n✓ Processing completed: {completed} successful, {failed} failed, {skipped} skipped")
 
         if failed > 0:
-            print(f"\n⚠️  {failed} books failed to process. Check the log for details.")
+            print(f"\n⚠️  {failed} books failed to process:")
+            for book in self.result.failed_books:
+                print(f"  - {book}")
+            print("\nCheck the log for details.")
             if not args.yolo:
                 input("Press enter to exit...")
             return 1
