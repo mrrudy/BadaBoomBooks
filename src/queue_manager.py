@@ -45,7 +45,11 @@ class QueueManager:
         self.connection = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
 
+        # Enable read_uncommitted to avoid WAL isolation issues across processes
+        # This allows workers in different processes to see each other's updates immediately
         cursor = self.connection.cursor()
+        cursor.execute('PRAGMA read_uncommitted = 1')
+        cursor.execute('PRAGMA wal_checkpoint(PASSIVE)')  # Ensure WAL is checkpointed
 
         # Jobs table: One per processing request (CLI run or web job)
         cursor.execute('''
@@ -94,6 +98,14 @@ class QueueManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_job_id ON tasks(job_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)')
 
+        # Schema migration: Add enqueued_at column if it doesn't exist
+        cursor.execute("PRAGMA table_info(tasks)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'enqueued_at' not in columns:
+            log.info("Adding enqueued_at column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN enqueued_at TIMESTAMP')
+            self.connection.commit()
+
         # File locks table: Tracks directory creation locks
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS file_locks (
@@ -121,6 +133,19 @@ class QueueManager:
 
         self.connection.commit()
         log.debug(f"Database initialized at {self.db_path}")
+
+    def refresh_connection(self):
+        """
+        Refresh the connection's view of the database.
+
+        In WAL mode, even with read_uncommitted, explicit checkpointing
+        ensures the latest writes from other processes are visible.
+        """
+        cursor = self.connection.cursor()
+        cursor.execute('PRAGMA wal_checkpoint(PASSIVE)')
+        # Force a simple read to refresh the connection's snapshot
+        cursor.execute('SELECT 1')
+        cursor.fetchone()
 
     def create_job(self, args: ProcessingArgs, user_id: Optional[str] = None) -> str:
         """
@@ -201,6 +226,25 @@ class QueueManager:
         """, values)
         self.connection.commit()
 
+    def delete_job(self, job_id: str):
+        """
+        Delete a job and all its associated tasks.
+
+        Args:
+            job_id: Job ID to delete
+        """
+        cursor = self.connection.cursor()
+
+        # Delete tasks first (due to foreign key)
+        cursor.execute("DELETE FROM tasks WHERE job_id = ?", (job_id,))
+        tasks_deleted = cursor.rowcount
+
+        # Delete job
+        cursor.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+
+        self.connection.commit()
+        log.info(f"Deleted job {job_id[:8]} and {tasks_deleted} associated task(s)")
+
     def update_task_status(self, task_id: str, status: str, **kwargs):
         """Update task status and optional fields."""
         set_clauses = ["status = ?"]
@@ -220,6 +264,9 @@ class QueueManager:
 
     def get_job_progress(self, job_id: str) -> Dict:
         """Get progress statistics for a job."""
+        # Refresh connection to see latest updates from other processes
+        self.refresh_connection()
+
         cursor = self.connection.cursor()
         cursor.execute("""
             SELECT
@@ -243,52 +290,113 @@ class QueueManager:
         return {'total': 0, 'completed': 0, 'failed': 0, 'skipped': 0, 'running': 0, 'pending': 0}
 
     def get_incomplete_jobs(self) -> List[Dict]:
-        """Find jobs that were interrupted (for resume logic)."""
+        """
+        Find jobs that were interrupted or have unfinished tasks (for resume logic).
+
+        Returns jobs that either:
+        1. Have status != 'completed' (interrupted mid-run)
+        2. Have status = 'completed' but still have pending tasks (race condition during shutdown)
+        """
+        # Refresh connection to see latest updates from other processes
+        self.refresh_connection()
+
         cursor = self.connection.cursor()
         cursor.execute("""
-            SELECT * FROM jobs
-            WHERE status IN ('pending', 'planning', 'processing')
-            ORDER BY created_at DESC
+            SELECT DISTINCT jobs.* FROM jobs
+            WHERE jobs.status IN ('pending', 'planning', 'processing')
+               OR EXISTS (
+                   SELECT 1 FROM tasks
+                   WHERE tasks.job_id = jobs.id
+                     AND tasks.status IN ('pending', 'running')
+               )
+            ORDER BY jobs.created_at DESC
         """)
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_pending_tasks(self, job_id: str) -> List[Dict]:
-        """Get all pending tasks for a job."""
+    def get_pending_tasks(self, job_id: str, only_not_enqueued: bool = False) -> List[Dict]:
+        """
+        Get all pending tasks for a job.
+
+        Args:
+            job_id: Job ID to get tasks for
+            only_not_enqueued: If True, only return tasks that haven't been enqueued yet
+
+        Returns:
+            List of task dictionaries
+        """
+        # Refresh connection to see latest updates from other processes
+        self.refresh_connection()
+
         cursor = self.connection.cursor()
-        cursor.execute("""
-            SELECT * FROM tasks
-            WHERE job_id = ? AND status = 'pending'
-            ORDER BY created_at
-        """, (job_id,))
+
+        if only_not_enqueued:
+            # Only get tasks that haven't been enqueued to Huey yet
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE job_id = ? AND status = 'pending' AND enqueued_at IS NULL
+                ORDER BY created_at
+            """, (job_id,))
+        else:
+            # Get all pending tasks
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE job_id = ? AND status = 'pending'
+                ORDER BY created_at
+            """, (job_id,))
+
         return [dict(row) for row in cursor.fetchall()]
 
     def enqueue_all_tasks(self, job_id: str, progress_callback: Optional[Callable] = None):
         """
         Enqueue all pending tasks for a job to Huey.
 
+        Only enqueues tasks that haven't been enqueued before (enqueued_at IS NULL).
+        This prevents duplicate tasks in Huey's queue.
+
         Args:
             job_id: Job ID to enqueue tasks for
             progress_callback: Optional callback for progress updates
         """
-        tasks = self.get_pending_tasks(job_id)
+        # Only get tasks that haven't been enqueued yet
+        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True)
 
-        log.info(f"Enqueueing {len(tasks)} tasks for job {job_id}")
+        if not tasks:
+            log.debug(f"No new tasks to enqueue for job {job_id[:8]}")
+            return
+
+        log.info(f"Enqueueing {len(tasks)} new pending tasks for job {job_id[:8]}...")
+
+        enqueued_count = 0
+        cursor = self.connection.cursor()
 
         for task in tasks:
             task_id = task['id']
             folder_path = task['folder_path']
             url = task['url']
 
-            # Enqueue to Huey
-            process_audiobook_task.schedule(
-                args=(task_id, job_id, folder_path, url),
-                delay=0
-            )
+            try:
+                # Enqueue to Huey
+                result = process_audiobook_task.schedule(
+                    args=(task_id, job_id, folder_path, url),
+                    delay=0
+                )
 
-            log.debug(f"Enqueued task {task_id} to Huey")
+                # Mark as enqueued to prevent duplicates
+                cursor.execute("""
+                    UPDATE tasks SET enqueued_at = ? WHERE id = ?
+                """, (datetime.now().isoformat(), task_id))
+                self.connection.commit()
+
+                log.debug(f"Enqueued task {task_id[:8]}... ({Path(folder_path).name}) to Huey, result: {result}")
+                enqueued_count += 1
+
+            except Exception as e:
+                log.error(f"Failed to enqueue task {task_id[:8]}: {e}", exc_info=True)
 
             if progress_callback:
                 progress_callback(job_id, len(tasks))
+
+        log.info(f"Successfully enqueued {enqueued_count}/{len(tasks)} new tasks")
 
     def close(self):
         """Close database connection."""
@@ -311,6 +419,7 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
         url: Source URL or 'OPF' marker
     """
     import threading
+    import os
     from .models import BookMetadata, ProcessingArgs
     from .processors.file_operations import FileProcessor
     from .processors.metadata_operations import MetadataProcessor
@@ -322,7 +431,12 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
     from .scrapers.base import preprocess_audible_url, http_request_audible_api, http_request_generic
 
     queue_manager = QueueManager()
-    worker_id = f"{threading.current_thread().name}"
+
+    # Create unique worker ID using PID and thread name
+    # This ensures workers from different processes don't collide
+    process_id = os.getpid()
+    thread_name = threading.current_thread().name
+    worker_id = f"pid{process_id}-{thread_name}"
 
     try:
         # Update task status

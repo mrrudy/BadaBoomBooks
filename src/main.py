@@ -96,6 +96,12 @@ class BadaBoomBooksApp:
                         resume = input("\nResume most recent incomplete job? (y/n): ").lower().strip() == 'y'
                         if resume:
                             return self._resume_job(incomplete_jobs[0], processing_args)
+                elif processing_args.resume:
+                    # User explicitly requested resume but no incomplete jobs found
+                    print("\n✅ No incomplete jobs to resume. All previous jobs are complete.")
+                    if not processing_args.yolo:
+                        input("Press enter to exit...")
+                    return 0
 
             # Validate arguments (only for new jobs, not resume)
             validation_errors = self.cli.validate_args(processing_args)
@@ -237,23 +243,68 @@ class BadaBoomBooksApp:
             log.info(f"Created job {job_id} with {len(folders)} folders")
 
             # Phase 1: Build queue (sequential - discover URLs for each book)
-            for i, folder in enumerate(folders):
-                print(f"\r[{i+1}/{len(folders)}] Discovering metadata sources...    ", end='', flush=True)
+            discovery_interrupted = False
+            try:
+                for i, folder in enumerate(folders):
+                    print(f"\r[{i+1}/{len(folders)}] Discovering metadata sources...    ", end='', flush=True)
 
-                try:
-                    # Get URL for this folder (existing logic from _build_processing_queue)
-                    url = self._get_url_for_folder(folder, args)
+                    try:
+                        # Get URL for this folder (existing logic from _build_processing_queue)
+                        url = self._get_url_for_folder(folder, args)
 
-                    if url:
-                        # Create task in database
-                        self.queue_manager.create_task(job_id, folder, url)
-                        log.debug(f"Queued {folder.name} with URL: {url}")
-                    else:
-                        # Skipped
-                        log.info(f"Skipped {folder.name}")
+                        if url:
+                            # Create task in database
+                            self.queue_manager.create_task(job_id, folder, url)
+                            log.debug(f"Queued {folder.name} with URL: {url}")
+                        else:
+                            # Skipped
+                            log.info(f"Skipped {folder.name}")
 
-                except Exception as e:
-                    log.error(f"Error queuing {folder}: {e}")
+                    except Exception as e:
+                        log.error(f"Error queuing {folder}: {e}")
+
+            except KeyboardInterrupt:
+                discovery_interrupted = True
+                print("\n\n⚠️  Discovery interrupted by user.")
+
+                # Check how many tasks were created before interruption
+                progress = self.queue_manager.get_job_progress(job_id)
+                discovered_count = progress.get('total', 0)
+
+                if discovered_count == 0:
+                    print("No books were discovered before interruption.")
+                    print("Discarding incomplete job...")
+                    self.queue_manager.delete_job(job_id)
+                    if not args.yolo:
+                        input("Press enter to exit...")
+                    return 1
+
+                print(f"✓ Discovered {discovered_count} of {len(folders)} books before interruption.")
+
+                if args.yolo:
+                    # Auto-continue with partial queue in yolo mode
+                    print("--yolo mode: Continuing with partial queue...")
+                else:
+                    print("\nOptions:")
+                    print("  1. Continue processing discovered books")
+                    print("  2. Save progress and exit (resume later with --resume)")
+                    print("  3. Discard and exit")
+
+                    choice = input("\nYour choice (1-3): ").strip()
+
+                    if choice == '2':
+                        print(f"\n💾 Progress saved. Resume with: python BadaBoomBooks.py --resume")
+                        return 0
+                    elif choice == '3':
+                        print("Discarding incomplete job...")
+                        self.queue_manager.delete_job(job_id)
+                        return 1
+                    elif choice != '1':
+                        print("Invalid choice. Discarding incomplete job...")
+                        self.queue_manager.delete_job(job_id)
+                        return 1
+
+                    print("\nContinuing with discovered books...")
 
             print()  # Newline after progress
 
@@ -903,28 +954,50 @@ class BadaBoomBooksApp:
         return metadata
 
     def _start_workers(self, num_workers: int):
-        """Start Huey worker threads for parallel processing."""
-        log.info(f"Starting {num_workers} Huey worker threads...")
+        """
+        Start Huey consumer with multiple workers.
 
-        for i in range(num_workers):
-            worker_thread = threading.Thread(
-                target=self._run_huey_worker,
-                name=f"HueyWorker-{i+1}",
-                daemon=True
-            )
-            worker_thread.start()
+        Note: We start ONE consumer with N workers, not N consumers with 1 worker each.
+        Huey's Consumer is designed to manage a pool of worker threads internally.
+        """
+        log.info(f"Starting Huey consumer with {num_workers} worker threads...")
 
-        log.info(f"✓ Started {num_workers} workers")
+        # Start single consumer thread with worker pool
+        consumer_thread = threading.Thread(
+            target=self._run_huey_consumer,
+            args=(num_workers,),
+            name="HueyConsumer",
+            daemon=True
+        )
+        consumer_thread.start()
 
-    def _run_huey_worker(self):
-        """Run Huey worker loop."""
+        log.info(f"✓ Started consumer with {num_workers} workers")
+
+    def _run_huey_consumer(self, num_workers: int):
+        """
+        Run Huey consumer with worker pool.
+
+        Args:
+            num_workers: Number of worker threads in the pool
+        """
         try:
-            # Huey's consumer loop - processes tasks from the queue
             from huey.consumer import Consumer
-            consumer = Consumer(huey, workers=1, periodic=False)
+
+            # Create consumer with worker pool
+            # The consumer manages multiple worker threads internally
+            consumer = Consumer(
+                huey,
+                workers=num_workers,  # Worker pool size
+                periodic=False,       # Disable periodic task scheduler
+                check_worker_health=True,
+                worker_type='thread'  # Use threads (not processes)
+            )
+
+            log.info(f"Huey consumer running with {num_workers} workers")
             consumer.run()
+
         except Exception as e:
-            log.error(f"Worker thread error: {e}")
+            log.error(f"Consumer error: {e}", exc_info=True)
 
     def _monitor_job_progress(self, job_id: str, args: ProcessingArgs) -> int:
         """
@@ -942,7 +1015,10 @@ class BadaBoomBooksApp:
         last_running = 0
         last_completed = 0
         last_failed = 0
+        last_enqueue_check = 0
+        enqueue_check_interval = 30  # Check for new pending tasks every 30 iterations (~9 seconds)
 
+        iteration = 0
         while True:
             progress = self.queue_manager.get_job_progress(job_id)
 
@@ -952,6 +1028,17 @@ class BadaBoomBooksApp:
             skipped = progress.get('skipped', 0)
             running = progress.get('running', 0)
             pending = progress.get('pending', 0)
+
+            # Periodically check for and enqueue new pending tasks
+            # This handles the case where another process (discovery) is still creating tasks
+            iteration += 1
+            if iteration - last_enqueue_check >= enqueue_check_interval:
+                pending_tasks = self.queue_manager.get_pending_tasks(job_id)
+                if pending_tasks:
+                    # Enqueue any tasks that haven't been queued yet
+                    log.info(f"Found {len(pending_tasks)} pending tasks, enqueueing...")
+                    self.queue_manager.enqueue_all_tasks(job_id)
+                last_enqueue_check = iteration
 
             # Show progress if changed
             if running != last_running or completed != last_completed or failed != last_failed:
@@ -1041,7 +1128,36 @@ class BadaBoomBooksApp:
             UPDATE tasks SET status = 'pending', started_at = NULL, worker_id = NULL
             WHERE job_id = ? AND status = 'running'
         """, (job_id,))
+        running_reset_count = cursor.rowcount
         self.queue_manager.connection.commit()
+
+        # Refresh progress after resetting running tasks
+        progress = self.queue_manager.get_job_progress(job_id)
+        total_pending = progress['pending']
+
+        # Check if there are any tasks left to process
+        if total_pending == 0:
+            total = progress['total']
+            completed = progress['completed']
+            failed = progress['failed']
+            skipped = progress['skipped']
+
+            if total > 0 and (completed + failed + skipped >= total):
+                # Job is already complete
+                print(f"\n✅ Job already complete: {completed} successful, {failed} failed, {skipped} skipped")
+                self.queue_manager.update_job_status(job_id, 'completed')
+                if not args.yolo:
+                    input("Press enter to exit...")
+                return 0 if failed == 0 else 1
+            else:
+                # No tasks to resume
+                print(f"\n⚠️  No pending tasks to resume.")
+                if not args.yolo:
+                    input("Press enter to exit...")
+                return 0
+
+        if running_reset_count > 0:
+            print(f"   Reset {running_reset_count} interrupted task(s) to pending")
 
         # Update job status
         self.queue_manager.update_job_status(job_id, 'processing')
@@ -1053,7 +1169,7 @@ class BadaBoomBooksApp:
         self._start_workers(args.workers)
 
         # Re-enqueue pending tasks
-        print(f"\n🔄 Re-enqueueing {progress['pending']} pending tasks...")
+        print(f"\n🔄 Re-enqueueing {total_pending} pending tasks...")
         self.queue_manager.enqueue_all_tasks(job_id)
 
         # Monitor progress with stored args (includes yolo flag)

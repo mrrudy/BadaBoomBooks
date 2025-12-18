@@ -154,4 +154,5 @@ test_zero_score_fix.py
 
 src/tests/data/expected/*
 .claude/*
-badaboombooksqueue.db
+badaboombooksqueue.db*
+
