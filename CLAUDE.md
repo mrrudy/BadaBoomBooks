@@ -186,6 +186,14 @@ The main processing flow in [src/main.py](src/main.py):
 - Perfect for automated workflows, cron jobs, or large batch processing
 - Example: `python BadaBoomBooks.py --auto-search --llm-select --yolo --opf --id3-tag -O "C:\Output" -R "C:\Input"`
 
+**No-Resume Mode** (`--no-resume` flag):
+- Disables resume prompts and always starts fresh job
+- Useful with `--yolo` for fully automated runs without user interaction
+- Prevents accidentally resuming incomplete jobs in automated workflows
+- When combined with `--yolo`: Completely unattended operation (no prompts at all)
+- Example: `python BadaBoomBooks.py --auto-search --yolo --no-resume --opf --id3-tag -O "C:\Output" -R "C:\Input"`
+- Note: Overrides `--resume` flag if both are specified
+
 ## Configuration Files
 
 - `queue.ini` - Processing queue (folder→URL mappings), auto-generated

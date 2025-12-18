@@ -171,6 +171,12 @@ class CLIHandler:
             action='store_true',
             help='Auto-accept all prompts (processing confirmation, LLM selections, etc.) - YOLO mode'
         )
+        parser.add_argument(
+            '--no-resume',
+            action='store_true',
+            dest='no_resume',
+            help='Skip resume prompt and always start fresh (useful with --yolo for fully automated runs)'
+        )
 
         # === QUEUE SYSTEM OPTIONS ===
         parser.add_argument(
@@ -249,6 +255,7 @@ class CLIHandler:
 
             # Automation
             yolo=parsed.yolo,
+            no_resume=parsed.no_resume,
 
             # Queue system
             workers=parsed.workers,

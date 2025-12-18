@@ -224,6 +224,7 @@ class ProcessingArgs:
 
     # === AUTOMATION ===
     yolo: bool = False
+    no_resume: bool = False  # Disable resume prompts (implies fresh start)
 
     # === QUEUE SYSTEM ===
     workers: int = 4  # Number of parallel workers

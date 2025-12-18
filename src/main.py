@@ -80,7 +80,8 @@ class BadaBoomBooksApp:
 
             # Check for incomplete jobs BEFORE validation (resume logic)
             # When resuming, args are loaded from database, so validation can be skipped
-            if processing_args.resume or not processing_args.yolo:
+            # Skip resume check if --no-resume is set
+            if not processing_args.no_resume and (processing_args.resume or not processing_args.yolo):
                 incomplete_jobs = self.queue_manager.get_incomplete_jobs()
                 if incomplete_jobs and len(incomplete_jobs) > 0:
                     print(f"\n⚠️  Found {len(incomplete_jobs)} incomplete job(s) from previous run:")
@@ -102,6 +103,10 @@ class BadaBoomBooksApp:
                     if not processing_args.yolo:
                         input("Press enter to exit...")
                     return 0
+            elif processing_args.no_resume and processing_args.resume:
+                # Conflicting flags
+                print("\n⚠️  Warning: --no-resume flag overrides --resume flag. Starting fresh job.")
+                processing_args.resume = False
 
             # Validate arguments (only for new jobs, not resume)
             validation_errors = self.cli.validate_args(processing_args)
