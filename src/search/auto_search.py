@@ -253,94 +253,165 @@ class AutoSearchEngine:
         
         return candidates
     
-    def _user_select_candidate(self, candidates: List[SearchCandidate], search_term: str, book_info: dict = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """Let user select from candidate pages (with optional AI pre-selection)."""
+    def _generate_search_url(self, search_term: str) -> str:
+        """
+        Generate DuckDuckGo search URL for manual searching.
+        Uses same logic as ManualSearchHandler._open_search_in_browser()
+        to ensure consistency with manual search behavior.
+        """
+        from ..config import SCRAPER_REGISTRY
 
-        # Try AI selection first if enabled
+        # Build combined search query for all sites (same as manual search)
+        domains = [f"site:{cfg['domain']}" for cfg in SCRAPER_REGISTRY.values()]
+        query = "(" + " OR ".join(domains) + f") {search_term}"
+
+        return f"https://duckduckgo.com/?q={query}"
+
+    def _user_select_candidate(self, candidates: List[SearchCandidate], search_term: str, book_info: dict = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Let user select from candidate pages with LLM scoring displayed upfront.
+
+        Shows candidates sorted by weighted score (if LLM available), with scores
+        visible and smart default selection. User can press Enter to accept default.
+        """
+        from ..utils import safe_encode_text
+
+        # Step 1: Try to score candidates with LLM (don't auto-select yet)
+        scored_candidates = []
+        recommended_candidate = None
+
         if self.enable_ai_selection:
-            ai_selected = self.candidate_selector.select_best_candidate(
+            recommended_candidate = self.candidate_selector.select_best_candidate(
                 candidates, search_term, book_info
             )
-            if ai_selected:
-                from ..utils import safe_encode_text
-                print(safe_encode_text(f"\n🤖 LLM Auto-selected: {ai_selected.title}"))
-                print(f"   URL: {ai_selected.url}")
-                print(f"   Site: {ai_selected.site_key}")
+            # Get scored candidates (already sorted by weighted score)
+            scored_candidates = self.candidate_selector.last_scored_candidates or []
 
-                # Display LLM scores for all candidates
-                if hasattr(self.candidate_selector, 'last_scored_candidates') and self.candidate_selector.last_scored_candidates:
-                    print("\n   LLM Scores for all candidates:")
-                    for candidate, llm_score, final_score in self.candidate_selector.last_scored_candidates:
-                        is_selected = (candidate == ai_selected)
-                        marker = safe_encode_text(" ← SELECTED") if is_selected else ""
-                        weight_info = ""
-                        if abs(llm_score - final_score) > 0.001:  # Weight was applied
-                            weight_info = f" (weighted: {final_score:.3f})"
-                        print(f"   - [{candidate.site_key}] {llm_score:.3f}{weight_info}{marker}")
-                        if is_selected:
-                            # Show title for selected candidate
-                            print(f"     {candidate.title}")
-
-                # Ask user to confirm AI selection (or auto-accept in yolo mode)
-                if self.yolo:
-                    print("\n🚀 YOLO mode enabled - auto-accepting LLM selection...")
-                    log.debug(f"YOLO mode: Auto-accepted AI selection: {ai_selected.url}")
-                    return ai_selected.site_key, ai_selected.url, ai_selected.html
-                else:
-                    confirm = input("\nAccept this selection? [Y/n]: ").strip().lower()
-                    if confirm in ('', 'y', 'yes'):
-                        log.debug(f"User confirmed AI selection: {ai_selected.url}")
-                        return ai_selected.site_key, ai_selected.url, ai_selected.html
-                    else:
-                        print("AI selection rejected, showing all candidates...")
-
-        # Display book information for context
+        # Step 2: Display book context
         self._display_book_context(search_term, book_info)
 
-        # If yolo mode is enabled and no AI selection, auto-select first candidate
-        if self.yolo:
-            print("\n🚀 YOLO mode enabled - auto-selecting first candidate...")
-            selected = candidates[0]
-            print(f"   Selected: [{selected.site_key}] {selected.title}")
-            print(f"   URL: {selected.url}")
-            log.debug(f"YOLO mode: Auto-selected first candidate: {selected.url}")
-            return selected.site_key, selected.url, selected.html
+        # Step 3: Determine display order and default selection
+        default_choice = None
 
-        print("\nCandidate pages:")
-        for i, candidate in enumerate(candidates, 1):
-            print(f"[{i}] {candidate}")
+        if scored_candidates:
+            # Use scored order (already sorted by final_score descending)
+            display_candidates = scored_candidates  # List[(candidate, llm_score, final_score)]
+
+            # Determine default based on best score
+            best_candidate, best_llm_score, best_final_score = scored_candidates[0]
+            ACCEPTANCE_THRESHOLD = 0.5
+
+            if best_llm_score >= ACCEPTANCE_THRESHOLD:
+                default_choice = 1  # Best candidate
+            else:
+                default_choice = 0  # Skip - no high-confidence match
+                print(safe_encode_text("\n⚠️  No high-confidence matches found (all scores < 0.5)\n"))
+        else:
+            # No LLM scoring available - use original order, no default
+            display_candidates = [(c, None, None) for c in candidates]
+            default_choice = None
+
+        # Step 4: Handle YOLO mode (auto-accept default without prompt)
+        if self.yolo:
+            if default_choice == 0:
+                print("🚀 YOLO mode: Auto-skipping (no high-confidence match)")
+                log.debug(f"YOLO mode: Auto-skipped - all scores < 0.5")
+                return None, None, None
+            elif default_choice == 1:
+                # Auto-select best scored candidate
+                selected_candidate = display_candidates[0][0]  # Get candidate from tuple
+                print(f"🚀 YOLO mode: Auto-selecting [{selected_candidate.site_key}] {selected_candidate.title}")
+                if scored_candidates:
+                    _, llm_score, final_score = display_candidates[0]
+                    print(f"   Score: {llm_score:.2f} (weighted: {final_score:.2f})")
+                log.debug(f"YOLO mode: Auto-selected best candidate: {selected_candidate.url}")
+                return selected_candidate.site_key, selected_candidate.url, selected_candidate.html
+            else:
+                # No default, fall back to first candidate
+                selected_candidate = candidates[0]
+                print(f"🚀 YOLO mode: Auto-selecting first candidate [{selected_candidate.site_key}]")
+                log.debug(f"YOLO mode: Auto-selected first candidate (no LLM): {selected_candidate.url}")
+                return selected_candidate.site_key, selected_candidate.url, selected_candidate.html
+
+        # Step 5: Display candidates with scores
+        print("\nCandidate pages:\n")
+
+        for i, (candidate, llm_score, final_score) in enumerate(display_candidates, 1):
+            # Determine if this is the default
+            is_default = (default_choice == i)
+            default_marker = safe_encode_text(" 🏆 ⭐ DEFAULT") if is_default else ""
+
+            # Format score display
+            score_str = ""
+            if llm_score is not None:
+                score_str = f" {llm_score:.2f}"
+                if final_score and abs(llm_score - final_score) > 0.001:
+                    # Weight was applied
+                    score_str += f" (weighted: {final_score:.2f})"
+
+            # Print candidate with score
+            print(safe_encode_text(f"[{i}]{default_marker} [{candidate.site_key}]{score_str}"))
+            print(safe_encode_text(f"    {candidate.title}"))
+            print(f"    {candidate.url}")
+            if candidate.snippet:
+                snippet_preview = candidate.snippet[:100]
+                print(safe_encode_text(f"    {snippet_preview}..."))
             print()
-        print("[0] Skip this book")
-        print("\nOr enter a custom URL from a supported site (audible.com, goodreads.com, lubimyczytac.pl)")
+
+        # Step 6: Display skip option with search URL if needed
+        skip_default = safe_encode_text(" ⭐ DEFAULT") if default_choice == 0 else ""
+        print(safe_encode_text(f"[0] Skip this book{skip_default}"))
+
+        # Show manual search URL if all scores failed threshold
+        if scored_candidates and default_choice == 0:
+            search_url = self._generate_search_url(search_term)
+            print(safe_encode_text(f"    🔍 Search manually: {search_url}"))
+
+        print("\nOr enter a custom URL from a supported site")
+
+        # Step 7: Get user input with smart default
+        if default_choice is not None:
+            prompt = f"Select [0-{len(candidates)}] (default: {default_choice}): "
+        else:
+            prompt = f"Select [0-{len(candidates)}]: "
 
         while True:
-            user_input = input(f"Select [1-{len(candidates)}], 0 to skip, or enter URL: ").strip()
+            user_input = input(prompt).strip()
 
-            # Try to parse as number first
-            try:
-                choice = int(user_input)
-                if choice == 0:
-                    log.debug(f"User skipped selection for search term: {search_term}")
-                    return None, None, None
-                if 1 <= choice <= len(candidates):
-                    selected = candidates[choice-1]
-
-                    # Debug: Save chosen page
-                    if self.debug_enabled:
-                        self._save_debug_content(selected.html, f"chosen_{selected.site_key}_{selected.title}")
-                        print(f"Debug: Saved chosen page to debug folder")
-
-                    log.debug(f"User selected candidate: {selected.url}")
-                    return selected.site_key, selected.url, selected.html
-                else:
-                    print(f"Invalid number. Please enter 1-{len(candidates)} or 0 to skip.")
+            # Handle empty input (default selection)
+            if user_input == "" and default_choice is not None:
+                choice = default_choice
+            else:
+                # Try to parse as number
+                try:
+                    choice = int(user_input)
+                except ValueError:
+                    # Not a number, try to parse as URL
+                    result = self._process_custom_url(user_input)
+                    if result:
+                        return result
+                    # If _process_custom_url returns None, it already printed error message
                     continue
-            except ValueError:
-                # Not a number, try to parse as URL
-                result = self._process_custom_url(user_input)
-                if result:
-                    return result
-                # If _process_custom_url returns None, it already printed error message
+
+            # Process choice
+            if choice == 0:
+                log.debug(f"User skipped selection for search term: {search_term}")
+                return None, None, None
+
+            if 1 <= choice <= len(candidates):
+                # Get the actual candidate (handle both scored and unscored display)
+                selected_candidate = display_candidates[choice - 1][0]
+
+                # Debug: Save chosen page
+                if self.debug_enabled:
+                    self._save_debug_content(selected_candidate.html,
+                                           f"chosen_{selected_candidate.site_key}_{selected_candidate.title}")
+                    print("Debug: Saved chosen page to debug folder")
+
+                log.debug(f"User selected candidate: {selected_candidate.url}")
+                return selected_candidate.site_key, selected_candidate.url, selected_candidate.html
+            else:
+                print(f"Invalid number. Please enter 0-{len(candidates)}")
                 continue
 
     def _process_custom_url(self, url_input: str) -> Optional[Tuple[str, str, str]]:
