@@ -54,7 +54,7 @@ class CLIHandler:
             '-R', '--book-root',
             dest='book_root',
             metavar='BOOK_ROOT',
-            help='Recursively discover audiobook folders from this root directory. When no author metadata is found, will extract author name from parent directory (e.g., "Author/Book" structure).'
+            help='Recursively discover audiobook folders from this structured input directory. Expects "Author/Title" folder hierarchy. When author metadata is missing, extracts author name from parent directory. Use this for organized collections, not random folders.'
         )
         
         # === OPERATION MODE ===

@@ -793,8 +793,8 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
 
         # Use auto-search or manual search
         if args.auto_search:
-            # Extract book info for context (simplified version - no book_root support in workers)
-            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log)
+            # Extract book info for context
+            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
 
             # Generate search term
             if book_info.get('title') and book_info.get('author'):
@@ -831,7 +831,7 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
 
         else:
             # Manual search
-            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log)
+            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
             manual_search = ManualSearchHandler()
             site_key, url = manual_search.handle_manual_search_with_context(folder_path, book_info, args.site)
 
@@ -845,16 +845,16 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
         return None
 
 
-def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log) -> dict:
+def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log, book_root: Optional[Path] = None) -> dict:
     """
     Extract book information for URL discovery context.
-
-    Simplified version without book_root support (used in workers).
 
     Args:
         folder_path: Path to audiobook folder
         metadata_processor: MetadataProcessor for reading OPF
         log: Logger instance
+        book_root: If provided (when using -R flag), will attempt to extract
+                  author from parent directory when no author is found in metadata
 
     Returns:
         Dictionary with book info (folder_name, title, author, source)
@@ -906,13 +906,28 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log)
             except Exception as e:
                 log.debug(f"Error reading ID3 tags for {folder_path.name}: {e}")
 
-        # Try parent directory for author if still not found
-        if 'author' not in book_info:
+        # If -R flag was used and no author was found, try parent directory
+        if book_root is not None and 'author' not in book_info:
             try:
                 parent_dir = folder_path.parent
-                if parent_dir and parent_dir.name:
+
+                # Resolve both paths to handle UNC vs drive letter issues
+                parent_resolved = parent_dir.resolve()
+                root_resolved = book_root.resolve()
+
+                # Extract author from parent if parent is book_root or within book_root
+                # This handles structures like: -R "Author/" discovers "Author/Book"
+                # or -R "Root/" discovers "Root/Author/Book"
+                try:
+                    is_within_root = parent_resolved.is_relative_to(root_resolved)
+                except AttributeError:
+                    # Python < 3.9 compatibility
+                    is_within_root = root_resolved in parent_resolved.parents or parent_resolved == root_resolved
+
+                if is_within_root:
                     book_info['author'] = parent_dir.name
                     log.debug(f"Extracted author '{parent_dir.name}' from parent directory for {folder_path.name}")
+
             except Exception as e:
                 log.debug(f"Error extracting author from parent directory for {folder_path.name}: {e}")
 
