@@ -106,7 +106,7 @@ class QueueManager:
                 completed_at TIMESTAMP,
                 worker_id TEXT,
                 FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
-                CONSTRAINT valid_task_status CHECK (status IN ('pending', 'running', 'completed', 'failed', 'skipped'))
+                CONSTRAINT valid_task_status CHECK (status IN ('pending', 'running', 'completed', 'failed', 'skipped', 'waiting_for_user'))
             )
         ''')
 
@@ -119,6 +119,30 @@ class QueueManager:
         if 'enqueued_at' not in columns:
             log.info("Adding enqueued_at column to tasks table")
             cursor.execute('ALTER TABLE tasks ADD COLUMN enqueued_at TIMESTAMP')
+            self.connection.commit()
+
+        # Schema migration: Add user input tracking columns if they don't exist
+        cursor.execute("PRAGMA table_info(tasks)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'user_input_type' not in columns:
+            log.info("Adding user_input_type column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN user_input_type TEXT')
+            self.connection.commit()
+
+        if 'user_input_prompt' not in columns:
+            log.info("Adding user_input_prompt column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN user_input_prompt TEXT')
+            self.connection.commit()
+
+        if 'user_input_options' not in columns:
+            log.info("Adding user_input_options column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN user_input_options TEXT')
+            self.connection.commit()
+
+        if 'user_input_context' not in columns:
+            log.info("Adding user_input_context column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN user_input_context TEXT')
             self.connection.commit()
 
         # File locks table: Tracks directory creation locks
@@ -478,6 +502,135 @@ class QueueManager:
             """, (job_id,))
 
         return [dict(row) for row in cursor.fetchall()]
+
+    def set_task_waiting_for_user(
+        self,
+        task_id: str,
+        input_type: str,
+        prompt: str,
+        options: Optional[List[str]] = None,
+        context: Optional[Dict] = None
+    ):
+        """
+        Mark task as waiting for user input.
+
+        Args:
+            task_id: Task UUID
+            input_type: Type of input needed:
+                - 'llm_confirmation': Confirm LLM-selected candidate
+                - 'manual_selection': Select from multiple candidates
+                - 'manual_url': Enter URL in manual search mode
+            prompt: User-facing prompt text
+            options: Optional list of available options/candidates
+            context: Optional context data (book info, candidates, etc.)
+        """
+        cursor = self.connection.cursor()
+        cursor.execute("""
+            UPDATE tasks
+            SET status = 'waiting_for_user',
+                user_input_type = ?,
+                user_input_prompt = ?,
+                user_input_options = ?,
+                user_input_context = ?
+            WHERE id = ?
+        """, (
+            input_type,
+            prompt,
+            json.dumps(options) if options else None,
+            json.dumps(context, default=str) if context else None,
+            task_id
+        ))
+        self.connection.commit()
+        log.debug(f"Task {task_id[:8]} waiting for user input: {input_type}")
+
+    def get_tasks_waiting_for_user(self, job_id: Optional[str] = None) -> List[Dict]:
+        """
+        Get all tasks waiting for user input.
+
+        Args:
+            job_id: Optional job ID to filter by
+
+        Returns:
+            List of task dictionaries with parsed user_input fields
+        """
+        self.refresh_connection()
+        cursor = self.connection.cursor()
+
+        if job_id:
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE job_id = ? AND status = 'waiting_for_user'
+                ORDER BY created_at
+            """, (job_id,))
+        else:
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE status = 'waiting_for_user'
+                ORDER BY created_at
+            """)
+
+        tasks = []
+        for row in cursor.fetchall():
+            task = dict(row)
+            # Parse JSON fields for convenience
+            if task.get('user_input_options'):
+                try:
+                    task['user_input_options'] = json.loads(task['user_input_options'])
+                except json.JSONDecodeError:
+                    pass
+            if task.get('user_input_context'):
+                try:
+                    task['user_input_context'] = json.loads(task['user_input_context'])
+                except json.JSONDecodeError:
+                    pass
+            tasks.append(task)
+
+        return tasks
+
+    def resume_task_from_user_input(
+        self,
+        task_id: str,
+        user_response: str,
+        clear_input_fields: bool = True
+    ):
+        """
+        Resume a task after receiving user input.
+
+        Args:
+            task_id: Task UUID
+            user_response: User's response (selection, URL, confirmation, etc.)
+            clear_input_fields: Whether to clear user_input_* fields (default: True)
+        """
+        cursor = self.connection.cursor()
+
+        if clear_input_fields:
+            cursor.execute("""
+                UPDATE tasks
+                SET status = 'pending',
+                    user_input_type = NULL,
+                    user_input_prompt = NULL,
+                    user_input_options = NULL,
+                    user_input_context = NULL,
+                    url = CASE
+                        WHEN ? != '' THEN ?
+                        ELSE url
+                    END
+                WHERE id = ?
+            """, (user_response, user_response, task_id))
+        else:
+            # Keep input fields for debugging/auditing
+            cursor.execute("""
+                UPDATE tasks
+                SET status = 'pending',
+                    url = CASE
+                        WHEN ? != '' THEN ?
+                        ELSE url
+                    END
+                WHERE id = ?
+            """, (user_response, user_response, task_id))
+
+        self.connection.commit()
+        log.debug(f"Task {task_id[:8]} resumed with user input")
 
     def close(self):
         """Close database connection."""
