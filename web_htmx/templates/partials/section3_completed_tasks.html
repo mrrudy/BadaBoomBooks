@@ -1,0 +1,82 @@
+<!-- Section 3: Completed Tasks Partial -->
+
+<div class="collapse collapse-arrow bg-base-200">
+    <input type="checkbox" />
+    <div class="collapse-title text-lg font-medium">
+        Completed Tasks
+        {% if total > 0 %}
+        <span class="badge badge-completed ml-2">{{ total }}</span>
+        {% endif %}
+    </div>
+    <div class="collapse-content">
+        {% if tasks %}
+        <div class="overflow-x-auto mt-2">
+            <table class="table table-sm w-full">
+                <thead>
+                    <tr>
+                        <th>Folder</th>
+                        <th>Completed</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr>
+                        <td>
+                            <div class="text-xs truncate max-w-xs" title="{{ task.folder_path }}">
+                                {{ task.folder_path | replace('\\', '/') | regex_replace('.*/', '') }}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="text-xs text-base-content/60">
+                                {{ task.completed_at }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if task.started_at and task.completed_at %}
+                            <span class="text-xs text-base-content/60">
+                                {# Calculate duration - would need Jinja2 filter #}
+                                -
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if total_pages > 1 %}
+        <!-- Pagination -->
+        <div class="join mt-4 justify-center flex">
+            {% if page > 1 %}
+            <button class="join-item btn btn-sm"
+                    hx-get="/tasks/completed?page={{ page - 1 }}&per_page={{ per_page }}"
+                    hx-target="#completed-tasks-container"
+                    hx-swap="innerHTML">
+                «
+            </button>
+            {% endif %}
+
+            <button class="join-item btn btn-sm btn-active">
+                Page {{ page }} of {{ total_pages }}
+            </button>
+
+            {% if page < total_pages %}
+            <button class="join-item btn btn-sm"
+                    hx-get="/tasks/completed?page={{ page + 1 }}&per_page={{ per_page }}"
+                    hx-target="#completed-tasks-container"
+                    hx-swap="innerHTML">
+                »
+            </button>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="text-center py-4 text-base-content/60">
+            <p>No completed tasks yet</p>
+        </div>
+        {% endif %}
+    </div>
+</div>

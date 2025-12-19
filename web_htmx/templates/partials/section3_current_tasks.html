@@ -1,0 +1,89 @@
+<!-- Section 3: Current Tasks Partial -->
+
+<div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+        <h2 class="card-title">Current Tasks</h2>
+
+        {% if job and progress %}
+        <!-- Job Progress Overview -->
+        <div class="mb-4">
+            <div class="flex justify-between text-sm mb-2">
+                <span>Progress: {{ progress.completed }}/{{ progress.total }}</span>
+                <span>{{ ((progress.completed / progress.total) * 100) | int }}%</span>
+            </div>
+            <progress class="progress progress-primary w-full"
+                      value="{{ progress.completed }}"
+                      max="{{ progress.total }}"></progress>
+
+            <div class="flex gap-4 text-xs mt-2">
+                <span class="badge badge-running">{{ progress.running }} running</span>
+                <span class="badge badge-pending">{{ progress.pending }} pending</span>
+                {% if progress.failed > 0 %}
+                <span class="badge badge-failed">{{ progress.failed }} failed</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if tasks %}
+        <!-- Task List -->
+        <div class="overflow-x-auto scrollable-container" style="max-height: 400px;">
+            <table class="table table-sm w-full">
+                <thead>
+                    <tr>
+                        <th>Folder</th>
+                        <th>Status</th>
+                        <th>Worker</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr>
+                        <td>
+                            <div class="text-xs truncate max-w-xs" title="{{ task.folder_path }}">
+                                {{ task.folder_path | replace('\\', '/') | regex_replace('.*/', '') }}
+                            </div>
+                            <div class="text-xs text-base-content/60 truncate max-w-xs">
+                                {{ task.folder_path }}
+                            </div>
+                        </td>
+                        <td>
+                            {% if task.status == 'running' %}
+                            <span class="badge badge-running badge-sm">
+                                <span class="spinner inline-block mr-1"></span>
+                                Running
+                            </span>
+                            {% elif task.status == 'pending' %}
+                            <span class="badge badge-pending badge-sm">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="text-xs text-base-content/60">
+                                {{ task.worker_id or 'Not assigned' }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <!-- No Active Tasks -->
+        <div class="text-center py-8 text-base-content/60">
+            <p>No tasks currently running</p>
+            <p class="text-sm mt-2">Start a scan to see tasks here</p>
+        </div>
+        {% endif %}
+
+        {% if job %}
+        <!-- Job Actions -->
+        <div class="card-actions justify-end mt-4">
+            <button class="btn btn-sm btn-error"
+                    hx-post="/tasks/cancel/{{ job.id }}"
+                    hx-confirm="Are you sure you want to cancel this job?">
+                Cancel Job
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,407 @@
+<!-- Section 1: Scan Planning Form -->
+
+<div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+        <h2 class="card-title">Scan Planning</h2>
+
+        <form id="scan-form" onsubmit="return false;">
+            <!-- 1.1 Discovery Source -->
+            <div class="form-section">
+                <h3 class="form-section-title">1. Discovery Source</h3>
+
+                <!-- Folder Selection -->
+                <div class="mb-4">
+                    <label class="label">
+                        <span class="label-text">Selected Folders</span>
+                        <span class="label-text-alt" id="selected-count-display">
+                            0 selected
+                        </span>
+                    </label>
+                    <button type="button"
+                            class="btn btn-primary w-full"
+                            onclick="document.getElementById('file-browser-modal').showModal()">
+                        📁 Browse & Select Folders
+                    </button>
+
+                    <div id="selected-folders-list" class="mt-2">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- From OPF Checkbox -->
+                <div class="form-control">
+                    <label class="checkbox-label">
+                        <input type="checkbox"
+                               id="from-opf"
+                               name="from_opf"
+                               class="checkbox checkbox-primary"
+                               checked />
+                        <span>Load metadata from existing OPF files</span>
+                    </label>
+                    <label class="label">
+                        <span class="label-text-alt">
+                            Attempts to read metadata from metadata.opf if present
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 1.2 Actions -->
+            <div class="form-section">
+                <h3 class="form-section-title">2. Actions</h3>
+
+                <!-- Dry Run -->
+                <div class="form-control">
+                    <label class="checkbox-label">
+                        <input type="checkbox"
+                               id="dry-run"
+                               name="dry_run"
+                               class="checkbox checkbox-warning"
+                               onchange="toggleDryRunMode(this.checked)" />
+                        <span>Dry Run (preview without changes)</span>
+                    </label>
+                </div>
+
+                <!-- Action Checkboxes -->
+                <div class="checkbox-group mt-4" id="actions-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="flatten" class="checkbox checkbox-primary" />
+                        <span>Flatten folder structure</span>
+                    </label>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="rename" class="checkbox checkbox-primary" />
+                        <span>Rename files</span>
+                    </label>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="opf" id="opf-checkbox" class="checkbox checkbox-primary" />
+                        <span>Generate OPF metadata</span>
+                    </label>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="infotxt" class="checkbox checkbox-primary" />
+                        <span>Generate info.txt</span>
+                    </label>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="id3_tag" class="checkbox checkbox-primary" />
+                        <span>Update ID3 tags</span>
+                    </label>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="series" class="checkbox checkbox-primary" />
+                        <span>Organize by series</span>
+                    </label>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="cover" class="checkbox checkbox-primary" />
+                        <span>Download cover images</span>
+                    </label>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox"
+                               name="force_refresh"
+                               id="force-refresh-checkbox"
+                               class="checkbox checkbox-primary" />
+                        <span>Force refresh metadata</span>
+                    </label>
+                </div>
+
+                <!-- Action Modifiers -->
+                <div class="mt-4">
+                    <label class="label">
+                        <span class="label-text font-medium">File Operation Mode</span>
+                    </label>
+                    <div class="flex gap-4">
+                        <label class="checkbox-label">
+                            <input type="radio" name="operation_mode" value="none" class="radio radio-primary" checked />
+                            <span>In-place</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="radio" name="operation_mode" value="copy" class="radio radio-primary" />
+                            <span>Copy</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="radio" name="operation_mode" value="move" class="radio radio-primary" />
+                            <span>Move</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Output Directory (shown when copy or move selected) -->
+                <div id="output-dir-container" class="mt-4" style="display: none;">
+                    <label class="label">
+                        <span class="label-text">Output Directory</span>
+                    </label>
+                    <input type="text"
+                           name="output_dir"
+                           id="output-dir"
+                           placeholder="C:\Organized"
+                           class="input input-bordered w-full" />
+                </div>
+            </div>
+
+            <!-- 1.3 Search Options -->
+            <div class="form-section">
+                <h3 class="form-section-title">3. Search Options</h3>
+
+                <!-- Auto-search enforced -->
+                <div class="alert alert-info mb-4">
+                    <div class="flex items-center gap-2">
+                        <span>ℹ️</span>
+                        <span class="text-sm">Auto-search is always enabled in web mode</span>
+                    </div>
+                </div>
+
+                <!-- LLM Select -->
+                <div class="form-control mb-4">
+                    <label class="checkbox-label">
+                        <input type="checkbox"
+                               id="llm-select"
+                               name="llm_select"
+                               class="checkbox checkbox-primary" />
+                        <span>Use LLM for candidate selection</span>
+                        <span id="llm-status-badge" class="badge badge-sm ml-2">Testing...</span>
+                    </label>
+                    <button type="button"
+                            class="btn btn-xs btn-ghost mt-2"
+                            onclick="testLLMConnection(true)">
+                        🔄 Test LLM Connection
+                    </button>
+                </div>
+
+                <!-- Search Parameters -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Search Limit</span>
+                        </label>
+                        <input type="number"
+                               name="search_limit"
+                               value="5"
+                               min="1"
+                               max="20"
+                               class="input input-bordered input-sm" />
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Download Limit</span>
+                        </label>
+                        <input type="number"
+                               name="download_limit"
+                               value="3"
+                               min="1"
+                               max="10"
+                               class="input input-bordered input-sm" />
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Search Delay (s)</span>
+                        </label>
+                        <input type="number"
+                               name="search_delay"
+                               value="2.0"
+                               min="0"
+                               step="0.1"
+                               class="input input-bordered input-sm" />
+                    </div>
+                </div>
+
+                <!-- Workers -->
+                <div class="form-control mt-4">
+                    <label class="label">
+                        <span class="label-text">Parallel Workers</span>
+                    </label>
+                    <input type="number"
+                           name="workers"
+                           value="4"
+                           min="1"
+                           max="16"
+                           class="input input-bordered input-sm w-32" />
+                    <label class="label">
+                        <span class="label-text-alt">Number of books to process simultaneously</span>
+                    </label>
+                </div>
+
+                <!-- Debug Mode -->
+                <div class="form-control mt-4">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="debug" class="checkbox checkbox-primary" />
+                        <span>Enable debug logging</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Validation Errors -->
+            <div id="validation-errors" class="mt-4" style="display: none;">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Submit Button -->
+            <div class="card-actions justify-end mt-6">
+                <button type="button"
+                        class="btn btn-primary btn-lg"
+                        onclick="submitScanForm()">
+                    🚀 Start Processing
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Initialize LLM status on page load
+document.addEventListener('DOMContentLoaded', function() {
+    testLLMConnection(false);
+    updateOperationMode();
+
+    // Listen for operation mode changes
+    document.querySelectorAll('input[name="operation_mode"]').forEach(radio => {
+        radio.addEventListener('change', updateOperationMode);
+    });
+
+    // Listen for OPF checkbox changes (for force-refresh dependency)
+    document.getElementById('opf-checkbox').addEventListener('change', updateForceRefreshState);
+    document.getElementById('from-opf').addEventListener('change', updateForceRefreshState);
+});
+
+function updateOperationMode() {
+    const mode = document.querySelector('input[name="operation_mode"]:checked').value;
+    const outputDirContainer = document.getElementById('output-dir-container');
+    outputDirContainer.style.display = (mode !== 'none') ? 'block' : 'none';
+}
+
+function updateForceRefreshState() {
+    const opfChecked = document.getElementById('opf-checkbox').checked;
+    const fromOpfChecked = document.getElementById('from-opf').checked;
+    const forceRefreshCheckbox = document.getElementById('force-refresh-checkbox');
+
+    // Disable force-refresh if opf or from_opf are unchecked
+    if (!opfChecked || !fromOpfChecked) {
+        forceRefreshCheckbox.checked = false;
+        forceRefreshCheckbox.disabled = true;
+    } else {
+        forceRefreshCheckbox.disabled = false;
+    }
+}
+
+function toggleDryRunMode(enabled) {
+    const actionsGroup = document.getElementById('actions-group');
+    if (enabled) {
+        actionsGroup.classList.add('dry-run-active');
+    } else {
+        actionsGroup.classList.remove('dry-run-active');
+    }
+}
+
+function testLLMConnection(force) {
+    const badge = document.getElementById('llm-status-badge');
+    const checkbox = document.getElementById('llm-select');
+
+    badge.textContent = 'Testing...';
+    badge.className = 'badge badge-sm ml-2';
+
+    const url = force ? '/llm/test/force' : '/llm/test';
+    const method = force ? 'POST' : 'GET';
+
+    fetch(url, { method: method })
+        .then(response => response.json())
+        .then(data => {
+            if (data.available) {
+                badge.textContent = 'Available';
+                badge.classList.add('badge-success');
+                checkbox.disabled = false;
+            } else {
+                badge.textContent = 'Unavailable';
+                badge.classList.add('badge-error');
+                checkbox.checked = false;
+                checkbox.disabled = true;
+            }
+
+            if (data.cached) {
+                badge.textContent += ' (cached)';
+            }
+        })
+        .catch(error => {
+            badge.textContent = 'Error';
+            badge.classList.add('badge-error');
+            checkbox.checked = false;
+            checkbox.disabled = true;
+        });
+}
+
+function submitScanForm() {
+    const form = document.getElementById('scan-form');
+    const formData = new FormData(form);
+
+    // Convert to JSON
+    const data = {};
+    formData.forEach((value, key) => {
+        if (key === 'operation_mode') {
+            data['copy'] = value === 'copy';
+            data['move'] = value === 'move';
+        } else {
+            // Checkboxes
+            if (form.elements[key] && form.elements[key].type === 'checkbox') {
+                data[key] = form.elements[key].checked;
+            } else {
+                data[key] = value;
+            }
+        }
+    });
+
+    // Validate first
+    fetch('/scan/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(validation => {
+        if (!validation.valid) {
+            showValidationErrors(validation.errors);
+            return;
+        }
+
+        // Start scan
+        return fetch('/scan/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            alert(`Processing started! Job ID: ${result.job_id}`);
+            // Reload current tasks
+            htmx.ajax('GET', `/tasks/current?job_id=${result.job_id}`, {target: '#current-tasks-container'});
+        } else {
+            showValidationErrors([result.error || 'Unknown error']);
+        }
+    })
+    .catch(error => {
+        showValidationErrors([`Request failed: ${error.message}`]);
+    });
+}
+
+function showValidationErrors(errors) {
+    const container = document.getElementById('validation-errors');
+    container.innerHTML = '';
+
+    errors.forEach(error => {
+        const div = document.createElement('div');
+        div.className = 'error-message';
+        div.textContent = error;
+        container.appendChild(div);
+    });
+
+    container.style.display = 'block';
+
+    // Scroll to errors
+    container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+</script>
