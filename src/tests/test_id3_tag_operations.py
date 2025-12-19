@@ -369,19 +369,64 @@ def test_id3_genre_alternative_mapping(existing_dir, expected_dir, cleanup_queue
     Test that alternative genre names are mapped to canonical forms in ID3 tags.
 
     This test verifies that:
-    1. Alternative genre names (e.g., "sci-fi") are mapped to canonical forms (e.g., "science fiction")
+    1. Alternative genre names are mapped to canonical forms based on genre_mapping.json
     2. Mapping is applied during ID3 tag writing
     3. Multiple alternatives are deduplicated to single canonical form
 
+    This test is data-driven: it reads genre_mapping.json to determine expected mappings,
+    making it resilient to future changes in the mapping file.
+
     Test flow:
-    1. Create OPF with alternative genre names
-    2. Process with --id3-tag
-    3. Verify ID3 tags contain canonical genre names
+    1. Load genre mappings from genre_mapping.json
+    2. Select test alternative genres from the mapping
+    3. Create OPF with alternative genre names
+    4. Process with --id3-tag
+    5. Verify ID3 tags contain canonical genre names (not alternatives)
 
     Test command equivalent:
         python BadaBoomBooks.py --copy --rename --from-opf --id3-tag --yolo \
             -O tmp_dir/expected -R tmp_dir/existing
     """
+    # Load genre mapping to determine expected canonical forms
+    import json
+    from pathlib import Path
+
+    mapping_file = Path(__file__).parent.parent.parent / "genre_mapping.json"
+    with open(mapping_file, 'r', encoding='utf-8') as f:
+        genre_mapping = json.load(f)
+
+    # Build reverse mapping: alternative -> canonical (lowercase)
+    alternative_to_canonical = {}
+    for canonical, alternatives in genre_mapping.items():
+        canonical_lower = canonical.lower()
+        for alt in alternatives:
+            alternative_to_canonical[alt.lower()] = canonical_lower
+
+    # Select test cases: pick one alternative from different canonical genres
+    # We want to test various mapping scenarios
+    test_alternatives = []
+    expected_canonicals = set()
+
+    # Strategy: Pick the first available alternative for each of these canonical genres
+    target_genres = ["science fiction", "fantasy", "romance"]
+    for target in target_genres:
+        target_lower = target.lower()
+        if target_lower in genre_mapping and genre_mapping[target_lower]:
+            # Pick first alternative
+            test_alternatives.append(genre_mapping[target_lower][0])
+            expected_canonicals.add(target_lower)
+
+    # Add one more test case for nationality genre (if available)
+    for canonical in genre_mapping:
+        if canonical.startswith("nat.") and genre_mapping[canonical]:
+            test_alternatives.append(genre_mapping[canonical][0])
+            expected_canonicals.add(canonical.lower())
+            break
+
+    # Ensure we have test data
+    assert len(test_alternatives) >= 3, \
+        "Not enough alternative genres in mapping file for testing"
+
     # Setup: Create test directory structure in tmp_path
     test_existing = tmp_path / "existing"
     test_expected = tmp_path / "expected"
@@ -399,22 +444,23 @@ def test_id3_genre_alternative_mapping(existing_dir, expected_dir, cleanup_queue
     with open(opf_file, 'r', encoding='utf-8') as f:
         opf_content = f.read()
 
-    # Replace genres with alternatives that should map to canonical forms
-    # According to genre_mapping.json:
-    # - "sci-fi" -> "science fiction"
-    # - "fantastyka" -> "fantasy"
-    # - "polska" -> "nat. poland"
-    # - "romans" -> "romance"
+    # Remove existing genres
     import re
     opf_content = re.sub(r'<dc:subject>.*?</dc:subject>\s*', '', opf_content)
 
-    # Insert alternative genre names
+    # Insert test alternative genre names with varied casing
     insert_pos = opf_content.find('<dc:identifier')
-    genre_tags = '''    <dc:subject>sci-fi</dc:subject>
-    <dc:subject>Fantastyka</dc:subject>
-    <dc:subject>POLSKA</dc:subject>
-    <dc:subject>romans</dc:subject>
-'''
+    genre_tags = ""
+    for i, alt in enumerate(test_alternatives):
+        # Vary the casing to test case-insensitive matching
+        if i % 3 == 0:
+            genre_value = alt.lower()
+        elif i % 3 == 1:
+            genre_value = alt.upper()
+        else:
+            genre_value = alt.title()
+        genre_tags += f'    <dc:subject>{genre_value}</dc:subject>\n'
+
     opf_content = opf_content[:insert_pos] + genre_tags + opf_content[insert_pos:]
 
     with open(opf_file, 'w', encoding='utf-8') as f:
@@ -458,25 +504,23 @@ def test_id3_genre_alternative_mapping(existing_dir, expected_dir, cleanup_queue
             # Verify genre field exists
             assert 'genre' in audio, f"Genre field missing in {audio_file.name}"
 
-            # Verify genres are normalized to canonical forms (lowercase)
-            genres = audio['genre']
-            assert len(genres) == 4, f"Expected 4 genres, got {len(genres)}: {genres}"
+            # Get actual genres from ID3 tags
+            actual_genres = set(g.lower() for g in audio['genre'])
 
-            # Alternatives should be mapped to canonical forms
-            assert 'science fiction' in genres, \
-                f"Expected 'science fiction' (from 'sci-fi'), got: {genres}"
-            assert 'fantasy' in genres, \
-                f"Expected 'fantasy' (from 'Fantastyka'), got: {genres}"
-            assert 'nat. poland' in genres, \
-                f"Expected 'nat. poland' (from 'POLSKA'), got: {genres}"
-            assert 'romance' in genres, \
-                f"Expected 'romance' (from 'romans'), got: {genres}"
+            # Verify count matches expected (no duplicates after normalization)
+            assert len(actual_genres) == len(expected_canonicals), \
+                f"Expected {len(expected_canonicals)} unique genres, got {len(actual_genres)}: {actual_genres}"
 
-            # Should NOT contain alternative names
-            assert 'sci-fi' not in genres, f"Alternative 'sci-fi' should be mapped, not present: {genres}"
-            assert 'fantastyka' not in genres, f"Alternative 'fantastyka' should be mapped: {genres}"
-            assert 'polska' not in genres, f"Alternative 'polska' should be mapped: {genres}"
-            assert 'romans' not in genres, f"Alternative 'romans' should be mapped: {genres}"
+            # Verify all expected canonical genres are present
+            for canonical in expected_canonicals:
+                assert canonical in actual_genres, \
+                    f"Expected canonical genre '{canonical}' not found in: {actual_genres}"
+
+            # Verify NO alternative names are present (all should be mapped)
+            for alt in test_alternatives:
+                alt_lower = alt.lower()
+                assert alt_lower not in actual_genres or alt_lower in expected_canonicals, \
+                    f"Alternative '{alt_lower}' should be mapped to canonical form, not present as-is: {actual_genres}"
 
     except ImportError:
         pytest.skip("Mutagen library not available")
