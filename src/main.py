@@ -80,8 +80,8 @@ class BadaBoomBooksApp:
 
             # Check for incomplete jobs BEFORE validation (resume logic)
             # When resuming, args are loaded from database, so validation can be skipped
-            # Skip resume check if --no-resume is set
-            if not processing_args.no_resume and (processing_args.resume or not processing_args.yolo):
+            # Only check if --resume is explicitly set
+            if processing_args.resume and not processing_args.no_resume:
                 incomplete_jobs = self.queue_manager.get_incomplete_jobs()
                 if incomplete_jobs and len(incomplete_jobs) > 0:
                     print(f"\n⚠️  Found {len(incomplete_jobs)} incomplete job(s) from previous run:")
@@ -90,18 +90,11 @@ class BadaBoomBooksApp:
                         status = job['status']
                         print(f"  {i+1}. Job {job['id'][:8]}... ({created}) - Status: {status}")
 
-                    if processing_args.resume:
-                        print("\n🔄 Auto-resuming most recent incomplete job (--resume flag)...")
-                        return self._resume_job(incomplete_jobs[0], processing_args)
-                    elif not processing_args.yolo:
-                        resume = input("\nResume most recent incomplete job? (y/n): ").lower().strip() == 'y'
-                        if resume:
-                            return self._resume_job(incomplete_jobs[0], processing_args)
-                elif processing_args.resume:
+                    print("\n🔄 Auto-resuming most recent incomplete job (--resume flag)...")
+                    return self._resume_job(incomplete_jobs[0], processing_args)
+                else:
                     # User explicitly requested resume but no incomplete jobs found
                     print("\n✅ No incomplete jobs to resume. All previous jobs are complete.")
-                    if not processing_args.yolo:
-                        input("Press enter to exit...")
                     return 0
             elif processing_args.no_resume and processing_args.resume:
                 # Conflicting flags
@@ -112,7 +105,7 @@ class BadaBoomBooksApp:
             validation_errors = self.cli.validate_args(processing_args)
 
             if validation_errors:
-                self.cli.handle_validation_errors(validation_errors, processing_args.yolo)
+                self.cli.handle_validation_errors(validation_errors)
                 return 1
 
             # Check LLM availability if needed for genre categorization
@@ -122,8 +115,6 @@ class BadaBoomBooksApp:
                     print("\n❌ LLM is not available but --llm-select flag is set.")
                     print("   LLM is required for intelligent genre categorization.")
                     print("   Either configure LLM in .env file or run without --llm-select flag.")
-                    if not processing_args.yolo:
-                        input("Press enter to exit...")
                     return 1
 
             # Initialize processors
@@ -134,18 +125,14 @@ class BadaBoomBooksApp:
             
             if not folders:
                 print("No audiobook folders found to process.")
-                if not processing_args.yolo:
-                    input("Press enter to exit...")
                 return 1
 
             # Show processing plan
             plan = OutputFormatter.format_processing_plan(folders, processing_args)
             print(f"\n{plan}")
 
-            # Confirm processing
-            if not self.cli.confirm_processing(folders, processing_args.dry_run, processing_args.yolo):
-                print("Processing cancelled by user.")
-                return 0
+            # Display processing information
+            self.cli.confirm_processing(folders, processing_args.dry_run)
             
             # Process all folders
             return self._process_all_folders(folders, processing_args)
@@ -276,8 +263,6 @@ class BadaBoomBooksApp:
 
             if total_tasks == 0:
                 print("\n⚠️  No books queued for processing.")
-                if not args.yolo:
-                    input("Press enter to exit...")
                 return 1
 
             print(f"\n✓ Identified {total_tasks} books for processing")
@@ -1070,13 +1055,9 @@ class BadaBoomBooksApp:
             for book in self.result.failed_books:
                 print(f"  - {book}")
             print("\nCheck the log for details.")
-            if not args.yolo:
-                input("Press enter to exit...")
             return 1
         else:
             print("\n✅ All books processed successfully!")
-            if not args.yolo:
-                input("Press enter to exit...")
             return 0
 
     def _resume_job(self, job: dict, cli_args: ProcessingArgs) -> int:
@@ -1144,14 +1125,10 @@ class BadaBoomBooksApp:
                 # Job is already complete
                 print(f"\n✅ Job already complete: {completed} successful, {failed} failed, {skipped} skipped")
                 self.queue_manager.update_job_status(job_id, 'completed')
-                if not args.yolo:
-                    input("Press enter to exit...")
                 return 0 if failed == 0 else 1
             else:
                 # No tasks to resume
                 print(f"\n⚠️  No pending tasks to resume.")
-                if not args.yolo:
-                    input("Press enter to exit...")
                 return 0
 
         if running_reset_count > 0:
