@@ -133,7 +133,7 @@ class CandidateSelector:
         # Quality bracket threshold - scores within this range are considered "similar"
         SIMILARITY_THRESHOLD = 0.1
         # Minimum score threshold - don't apply weights if all scores are too low
-        ACCEPTANCE_THRESHOLD = 0.5
+        ACCEPTANCE_THRESHOLD = 0.65
 
         if not scored_candidates:
             return []
