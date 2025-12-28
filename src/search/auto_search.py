@@ -258,6 +258,8 @@ class AutoSearchEngine:
         Generate DuckDuckGo search URL for manual searching.
         Uses same logic as ManualSearchHandler._open_search_in_browser()
         to ensure consistency with manual search behavior.
+
+        URL-encodes the query to make it fully clickable in PowerShell terminals.
         """
         from ..config import SCRAPER_REGISTRY
 
@@ -265,7 +267,8 @@ class AutoSearchEngine:
         domains = [f"site:{cfg['domain']}" for cfg in SCRAPER_REGISTRY.values()]
         query = "(" + " OR ".join(domains) + f") {search_term}"
 
-        return f"https://duckduckgo.com/?q={query}"
+        # URL-encode the query for clickable links in terminals
+        return f"https://duckduckgo.com/?q={requests.utils.quote(query)}"
 
     def _user_select_candidate(self, candidates: List[SearchCandidate], search_term: str, book_info: dict = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
