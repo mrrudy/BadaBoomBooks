@@ -117,8 +117,9 @@ class FileProcessor:
             final_output = series_dir / f"{volume_clean} - {title_clean}"
         else:
             final_output = author_folder / title_clean
-        
-        return final_output.resolve()
+
+        # Don't resolve() to preserve mapped drive letters (T:) instead of UNC paths
+        return final_output
     
     def _copy_folder(self, metadata: BookMetadata) -> bool:
         """Copy audiobook folder to new location."""

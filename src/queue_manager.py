@@ -248,7 +248,7 @@ class QueueManager:
         cursor.execute("""
             INSERT INTO tasks (id, job_id, folder_path, url, status)
             VALUES (?, ?, ?, ?, 'pending')
-        """, (task_id, job_id, str(folder_path.resolve()), url))
+        """, (task_id, job_id, str(folder_path), url))
         self.connection.commit()
 
         log.debug(f"Created task {task_id} for {folder_path.name}")
