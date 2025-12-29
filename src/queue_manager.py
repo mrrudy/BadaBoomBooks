@@ -915,15 +915,40 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
             # Extract book info for context
             book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
 
-            # Generate search term
-            if book_info.get('title') and book_info.get('author'):
-                search_term = f"{book_info['title']} by {book_info['author']}"
-            elif book_info.get('title'):
-                search_term = book_info['title']
-            elif book_info.get('author'):
-                search_term = f"{folder_path.name} by {book_info['author']}"
+            # Generate search term(s) - parallel alternatives if no OPF
+            from .utils.metadata_cleaning import generate_search_alternatives
+
+            if book_info.get('opf_exists'):
+                # OPF exists - use single trusted source
+                if book_info.get('title') and book_info.get('author'):
+                    search_term = f"{book_info['title']} by {book_info['author']}"
+                elif book_info.get('title'):
+                    search_term = book_info['title']
+                else:
+                    search_term = generate_search_term(folder_path)
+                search_alternatives = None
             else:
-                search_term = generate_search_term(folder_path)
+                # No OPF - generate parallel search alternatives from multiple sources
+                if 'sources' in book_info:
+                    search_alternatives = generate_search_alternatives(book_info['sources'])
+                    # Use best alternative as primary search term for display
+                    if search_alternatives:
+                        search_term = search_alternatives[0]['term']
+                        log.info(f"[WORKER] Using search term: {search_term} (from {search_alternatives[0]['source']})")
+                    else:
+                        search_term = generate_search_term(folder_path)
+                        search_alternatives = None
+                else:
+                    # Fallback to legacy behavior
+                    if book_info.get('title') and book_info.get('author'):
+                        search_term = f"{book_info['title']} by {book_info['author']}"
+                    elif book_info.get('title'):
+                        search_term = book_info['title']
+                    elif book_info.get('author'):
+                        search_term = f"{folder_path.name} by {book_info['author']}"
+                    else:
+                        search_term = generate_search_term(folder_path)
+                    search_alternatives = None
 
             # Determine sites to search
             if args.site == 'all':
@@ -942,7 +967,8 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
                 in_worker_context=True
             )
             site_key, url, html = auto_search.search_and_select_with_context(
-                search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay
+                search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay,
+                search_alternatives=search_alternatives
             )
 
             if site_key and url:
@@ -990,6 +1016,8 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log,
     """
     Extract book information for URL discovery context.
 
+    Returns multi-source metadata when no OPF exists, allowing parallel search strategies.
+
     Args:
         folder_path: Path to audiobook folder
         metadata_processor: MetadataProcessor for reading OPF
@@ -999,8 +1027,10 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log,
 
     Returns:
         Dictionary with book info (folder_name, title, author, source)
+        If no OPF: includes 'sources' key with both folder and ID3 metadata
     """
-    from .utils.helpers import find_metadata_opf
+    from .utils.helpers import find_metadata_opf, find_audio_files
+    from .utils.metadata_cleaning import extract_metadata_from_sources
     from xml.etree import ElementTree as ET
 
     book_info = {
@@ -1010,6 +1040,7 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log,
 
     try:
         # Try to read existing OPF file first
+        # OPF is trusted completely - if it exists, use it exclusively
         opf_file = find_metadata_opf(folder_path)
         if opf_file:
             try:
@@ -1026,26 +1057,69 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log,
                     book_info['author'] = author_elem.text
 
                 book_info['source'] = 'existing OPF file'
+                book_info['opf_exists'] = True
+                # OPF data is trusted - return immediately
+                return book_info
             except Exception as e:
                 log.debug(f"Error reading OPF for {folder_path.name}: {e}")
 
-        # Try ID3 tags if no author found yet
-        if 'author' not in book_info:
-            try:
-                from .utils.helpers import get_first_audio_file
-                import mutagen
+        # No OPF - extract from both ID3 and folder name as equal sources
+        book_info['opf_exists'] = False
 
-                audio_file = get_first_audio_file(folder_path)
-                if audio_file:
-                    audio = mutagen.File(audio_file, easy=True)
-                    if audio:
-                        if 'title' in audio and audio['title']:
-                            book_info['title'] = audio['title'][0]
-                        if 'artist' in audio and audio['artist']:
-                            book_info['author'] = audio['artist'][0]
-                        book_info['source'] = 'ID3 tags'
-            except Exception as e:
-                log.debug(f"Error reading ID3 tags for {folder_path.name}: {e}")
+        # Read ID3 tags
+        id3_title = None
+        id3_author = None
+        id3_album = None
+        try:
+            import mutagen
+
+            audio_files = find_audio_files(folder_path)
+            audio_file = audio_files[0] if audio_files else None
+            if audio_file:
+                audio = mutagen.File(audio_file, easy=True)
+                if audio:
+                    if 'title' in audio and audio['title']:
+                        id3_title = audio['title'][0]
+                    if 'artist' in audio and audio['artist']:
+                        id3_author = audio['artist'][0]
+                    if 'album' in audio and audio['album']:
+                        id3_album = audio['album'][0]
+        except Exception as e:
+            log.debug(f"Error reading ID3 tags for {folder_path.name}: {e}")
+
+        # Get cleaned metadata from both sources
+        metadata_sources = extract_metadata_from_sources(
+            folder_path=folder_path,
+            id3_title=id3_title,
+            id3_author=id3_author,
+            id3_album=id3_album
+        )
+
+        # Store multi-source data for parallel search
+        book_info['sources'] = metadata_sources
+
+        # For backward compatibility, populate main fields with best available data
+        # Prefer ID3 if valid and not garbage, otherwise use folder
+        id3_data = metadata_sources['id3']
+        folder_data = metadata_sources['folder']
+
+        if id3_data['valid'] and not id3_data['garbage_detected']:
+            # Use ID3 data for primary fields
+            if id3_data['title']:
+                book_info['title'] = id3_data['title']
+            if id3_data['author']:
+                book_info['author'] = id3_data['author']
+            if id3_data['album']:
+                book_info['series'] = id3_data['album']
+            book_info['source'] = 'ID3 tags'
+            log.debug(f"Using ID3 metadata for {folder_path.name}: {id3_data['title']} by {id3_data['author']}")
+        elif folder_data['valid']:
+            # Fallback to folder name
+            book_info['title'] = folder_data['cleaned']
+            book_info['source'] = 'folder name (cleaned)'
+            log.debug(f"Using folder name for {folder_path.name}: {folder_data['cleaned']}")
+            if id3_data['garbage_detected']:
+                log.warning(f"Garbage detected in ID3 tags for {folder_path.name}, using folder name instead")
 
         # If -R flag was used and no author was found, try parent directory
         if book_root is not None and 'author' not in book_info:

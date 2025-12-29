@@ -59,38 +59,67 @@ class AutoSearchEngine:
         return self.search_and_select_with_context(search_term, site_keys, None, 
                                                   search_limit, download_limit, delay)
     
-    def search_and_select_with_context(self, search_term: str, site_keys: List[str], 
-                                      book_info: dict = None, search_limit: int = 5, 
-                                      download_limit: int = 3, delay: float = 2.0) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def search_and_select_with_context(self, search_term: str, site_keys: List[str],
+                                      book_info: dict = None, search_limit: int = 5,
+                                      download_limit: int = 3, delay: float = 2.0,
+                                      search_alternatives: List[dict] = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Search for candidates across multiple sites and let user select with book context.
-        
+
         Args:
-            search_term: Term to search for
+            search_term: Primary term to search for
             site_keys: List of site keys to search
             book_info: Current book information for context display
             search_limit: Maximum results per site to fetch
             download_limit: Maximum pages per site to download
             delay: Delay between requests
-            
+            search_alternatives: Optional list of alternative search terms from different sources
+                                (ID3 tags vs folder name). Each dict contains:
+                                {'source': 'id3'|'folder', 'term': 'search term', 'priority': int, 'details': str}
+
         Returns:
             Tuple of (site_key, url, html) or (None, None, None) if skipped
         """
         candidates = []
         driver = None
-        
+
         try:
             # Initialize Chrome driver
             chrome_options = get_chrome_options()
             driver = webdriver.Chrome(options=chrome_options)
-            
-            # Search each site
+
+            # If search_alternatives provided, search with ALL alternatives
+            # This creates parallel search strategies: (ID3 data) OR (folder name)
+            search_terms_to_try = []
+            if search_alternatives:
+                # Use all alternatives for comprehensive search
+                for alt in search_alternatives:
+                    search_terms_to_try.append({
+                        'term': alt['term'],
+                        'source': alt['source'],
+                        'details': alt.get('details', '')
+                    })
+                log.info(f"Using {len(search_terms_to_try)} search alternatives from multiple sources")
+            else:
+                # Single search term (legacy behavior or OPF-based)
+                search_terms_to_try.append({
+                    'term': search_term,
+                    'source': 'single',
+                    'details': ''
+                })
+
+            # Search each site with each alternative
             for site_key in site_keys:
-                site_candidates = self._search_single_site(
-                    driver, site_key, search_term, search_limit, download_limit, delay
-                )
-                candidates.extend(site_candidates)
-            
+                for search_info in search_terms_to_try:
+                    site_candidates = self._search_single_site(
+                        driver, site_key, search_info['term'], search_limit, download_limit, delay
+                    )
+                    # Tag candidates with their source
+                    for candidate in site_candidates:
+                        candidate.search_source = search_info['source']
+                        candidate.search_term_used = search_info['term']
+                    candidates.extend(site_candidates)
+
         except Exception as e:
             log.error(f"Error during automated search: {e}")
             print(f"Search error: {e}")

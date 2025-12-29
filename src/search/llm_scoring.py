@@ -166,21 +166,40 @@ class LLMScorer:
         Returns:
             Prompt string for LLM
         """
-        context = f"Search term: {search_term}\n"
+        context = f"Search term: {search_term}\n\n"
 
         if book_info:
             context += "Book information:\n"
-            if book_info.get('title'):
-                context += f"  Title: {book_info['title']}\n"
-            if book_info.get('author'):
-                context += f"  Author: {book_info['author']}\n"
-            if book_info.get('series'):
-                context += f"  Series: {book_info['series']}"
-                if book_info.get('volume'):
-                    context += f" (Volume {book_info['volume']})"
-                context += "\n"
-            if book_info.get('narrator'):
-                context += f"  Narrator: {book_info['narrator']}\n"
+
+            # Check for multi-source metadata
+            if 'sources' in book_info:
+                sources = book_info['sources']
+                folder_data = sources.get('folder', {})
+                id3_data = sources.get('id3', {})
+
+                if folder_data.get('raw'):
+                    context += f"  Folder name: {folder_data['raw']}\n"
+
+                if id3_data.get('garbage_detected'):
+                    context += "  ⚠ WARNING: ID3 tags contain garbage data - trust folder name\n"
+                elif id3_data.get('valid'):
+                    if id3_data.get('title'):
+                        context += f"  ID3 Title: {id3_data['title']}\n"
+                    if id3_data.get('author'):
+                        context += f"  ID3 Author: {id3_data['author']}\n"
+            else:
+                # Legacy single-source
+                if book_info.get('title'):
+                    context += f"  Title: {book_info['title']}\n"
+                if book_info.get('author'):
+                    context += f"  Author: {book_info['author']}\n"
+                if book_info.get('series'):
+                    context += f"  Series: {book_info['series']}"
+                    if book_info.get('volume'):
+                        context += f" (Volume {book_info['volume']})"
+                    context += "\n"
+                if book_info.get('narrator'):
+                    context += f"  Narrator: {book_info['narrator']}\n"
 
         # Truncate snippet to avoid token limits
         snippet = candidate.snippet[:300] if candidate.snippet else "No snippet available"
@@ -217,23 +236,59 @@ Score:"""
         Returns:
             Prompt string for LLM
         """
-        context = f"Search term: {search_term}\n\n"
+        context = f"Primary search term: {search_term}\n\n"
 
         if book_info:
             context += "Book information (what we're looking for):\n"
-            if book_info.get('title'):
-                context += f"  Title: {book_info['title']}\n"
-            if book_info.get('author'):
-                context += f"  Author: {book_info['author']}\n"
-            if book_info.get('series'):
-                context += f"  Series: {book_info['series']}"
-                if book_info.get('volume'):
-                    context += f" (Volume {book_info['volume']})"
-                context += "\n"
-            if book_info.get('narrator'):
-                context += f"  Narrator: {book_info['narrator']}\n"
-            if book_info.get('language'):
-                context += f"  Language: {book_info['language']}\n"
+
+            # Check if we have multi-source metadata
+            if 'sources' in book_info:
+                sources = book_info['sources']
+
+                # Show folder name (always reliable)
+                folder_data = sources.get('folder', {})
+                if folder_data.get('raw'):
+                    context += f"  Folder name: {folder_data['raw']}\n"
+                    if folder_data.get('cleaned') and folder_data['cleaned'] != folder_data['raw']:
+                        context += f"    (cleaned: {folder_data['cleaned']})\n"
+
+                # Show ID3 data with warnings if garbage detected
+                id3_data = sources.get('id3', {})
+                if id3_data.get('garbage_detected'):
+                    context += "\n  ⚠ WARNING: ID3 tags appear to contain garbage data (domains/URLs/duplicates):\n"
+                    if id3_data.get('title'):
+                        context += f"    ID3 Title: {id3_data['title']} [MAY BE UNRELIABLE]\n"
+                    if id3_data.get('author'):
+                        context += f"    ID3 Author: {id3_data['author']} [MAY BE UNRELIABLE]\n"
+                    context += "  → RECOMMENDATION: Trust folder name over ID3 tags if they conflict\n\n"
+                elif id3_data.get('valid'):
+                    context += "\n  ID3 Tag Metadata:\n"
+                    if id3_data.get('title'):
+                        context += f"    Title: {id3_data['title']}\n"
+                    if id3_data.get('author'):
+                        context += f"    Author: {id3_data['author']}\n"
+                    if id3_data.get('album'):
+                        context += f"    Album/Series: {id3_data['album']}\n"
+
+                # Show source being used
+                context += f"\n  Metadata source: {book_info.get('source', 'unknown')}\n"
+
+            else:
+                # Legacy single-source metadata
+                if book_info.get('title'):
+                    context += f"  Title: {book_info['title']}\n"
+                if book_info.get('author'):
+                    context += f"  Author: {book_info['author']}\n"
+                if book_info.get('series'):
+                    context += f"  Series: {book_info['series']}"
+                    if book_info.get('volume'):
+                        context += f" (Volume {book_info['volume']})"
+                    context += "\n"
+                if book_info.get('narrator'):
+                    context += f"  Narrator: {book_info['narrator']}\n"
+                if book_info.get('language'):
+                    context += f"  Language: {book_info['language']}\n"
+                context += f"  Source: {book_info.get('source', 'folder name')}\n"
 
         # Build candidate list
         candidates_text = ""
@@ -275,11 +330,14 @@ SCORING CRITERIA (in order of importance):
    - Completely unrelated
 
 IMPORTANT RULES:
+- When ID3 tags are marked as garbage (⚠ WARNING), IGNORE them and use folder name instead
+- Folder name is generally more reliable than corrupted ID3 tags
 - Being "part of the same series" is NOT a match if it's a different volume
 - Same language is a strong positive indicator
 - Exact title match in the correct language is the best indicator
 - It is COMPLETELY ACCEPTABLE to score all candidates as 0.0 if none match
 - When in doubt, score LOW - false negatives are better than false positives
+- If the candidates are about completely different topics/genres than what we're looking for, score them 0.0
 
 RESPONSE FORMAT:
 Return ONLY the scores for each candidate, one per line:

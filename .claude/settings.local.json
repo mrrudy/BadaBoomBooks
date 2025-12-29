@@ -30,7 +30,8 @@
       "Bash(python -c:*)",
       "Bash(python -m pytest:*)",
       "Bash(python test_author_extraction.py:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(timeout 60 python:*)"
     ]
   }
 }

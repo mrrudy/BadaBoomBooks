@@ -177,13 +177,15 @@ class ProcessingResult:
 @dataclass
 class SearchCandidate:
     """Represents a search result candidate for book metadata."""
-    
+
     site_key: str
     url: str
     title: str
     snippet: str
     html: str = ""
-    
+    search_source: str = "single"  # Tracks which source generated this candidate: 'id3', 'folder', 'single'
+    search_term_used: str = ""  # The actual search term that found this candidate
+
     def __str__(self):
         return f"{self.site_key} | {self.title}\n    {self.url}\n    {self.snippet[:100]}..."
 

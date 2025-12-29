@@ -446,20 +446,49 @@ class BadaBoomBooksApp:
     def _auto_search_for_folder(self, folder: Path, args: ProcessingArgs) -> bool:
         """Perform auto-search for a folder."""
         from .utils import generate_search_term
-        
+        from .utils.metadata_cleaning import generate_search_alternatives
+
         # Extract current book information for context
         book_info = self._extract_book_info(folder, args.book_root)
-        
-        # Generate search term using book_info if available
-        if book_info.get('title') and book_info.get('author'):
-            search_term = f"{book_info['title']} by {book_info['author']}"
-        elif book_info.get('title'):
-            search_term = book_info['title']
-        elif book_info.get('author'):
-            search_term = f"{folder.name} by {book_info['author']}"
+
+        # Generate search term(s) - parallel alternatives if no OPF
+        if book_info.get('opf_exists'):
+            # OPF exists - use single trusted source
+            if book_info.get('title') and book_info.get('author'):
+                search_term = f"{book_info['title']} by {book_info['author']}"
+            elif book_info.get('title'):
+                search_term = book_info['title']
+            else:
+                search_term = generate_search_term(folder)
+            search_alternatives = None
         else:
-            search_term = generate_search_term(folder)
-        
+            # No OPF - generate parallel search alternatives from multiple sources
+            if 'sources' in book_info:
+                search_alternatives = generate_search_alternatives(book_info['sources'])
+                # Use best alternative as primary search term for display
+                if search_alternatives:
+                    search_term = search_alternatives[0]['term']
+                    log.info(f"[METADATA DEBUG] Using search alternative: {search_term}")
+                    print(f"[DEBUG] Search term from alternatives: {search_term}")
+                else:
+                    search_term = generate_search_term(folder)
+                    log.info(f"[METADATA DEBUG] No alternatives, using folder-based: {search_term}")
+                    print(f"[DEBUG] Search term from folder: {search_term}")
+            else:
+                # Fallback to legacy behavior
+                log.info(f"[METADATA DEBUG] No 'sources' key, using legacy logic")
+                print(f"[DEBUG] Using legacy logic, book_info keys: {list(book_info.keys())}")
+                if book_info.get('title') and book_info.get('author'):
+                    search_term = f"{book_info['title']} by {book_info['author']}"
+                elif book_info.get('title'):
+                    search_term = book_info['title']
+                elif book_info.get('author'):
+                    search_term = f"{folder.name} by {book_info['author']}"
+                else:
+                    search_term = generate_search_term(folder)
+                search_alternatives = None
+                print(f"[DEBUG] Legacy search term: {search_term}")
+
         self.progress.report_search_progress(search_term, "auto")
         
         # Determine sites to search
@@ -468,9 +497,10 @@ class BadaBoomBooksApp:
         else:
             site_keys = [args.site]
         
-        # Perform search with book context
+        # Perform search with book context and parallel alternatives
         site_key, url, html = self.auto_search.search_and_select_with_context(
-            search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay
+            search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay,
+            search_alternatives=search_alternatives
         )
         
         if site_key and url:
@@ -510,12 +540,20 @@ class BadaBoomBooksApp:
     def _extract_book_info(self, folder: Path, book_root: Optional[Path] = None) -> dict:
         """Extract current book information for context display.
 
+        Returns multi-source metadata when no OPF exists, allowing parallel search strategies.
+
         Args:
             folder: The audiobook folder to extract info from
             book_root: If provided (when using -R flag), will attempt to extract
                       author from parent directory when no author is found in metadata
+
+        Returns:
+            dict: If OPF exists, returns single-source trusted metadata.
+                  If no OPF, returns multi-source metadata with 'sources' key containing
+                  both cleaned folder name and ID3 data for parallel search.
         """
-        
+        from .utils.metadata_cleaning import extract_metadata_from_sources
+
         book_info = {
             'folder_name': folder.name,
             'source': 'folder name'
@@ -523,41 +561,76 @@ class BadaBoomBooksApp:
 
         try:
             # Try to read existing OPF file first
+            # OPF is trusted completely - if it exists, use it exclusively
             opf_file = find_metadata_opf(folder)
             if opf_file:
                 opf_info = self._extract_from_opf(opf_file)
                 book_info.update(opf_info)
                 book_info['source'] = 'existing OPF file'
-                # If OPF provided author, return early (author found)
-                if 'author' in opf_info and opf_info['author']:
-                    return book_info
-            
-            # Try to extract from ID3 tags if no author found yet
-            if 'author' not in book_info:
-                id3_info = self._extract_from_id3_tags(folder)
-                if id3_info:
-                    book_info.update(id3_info)
-                    book_info['source'] = 'ID3 tags' if book_info.get('source') == 'folder name' else book_info['source']
-                    # If ID3 provided author, return early (author found)
-                    if 'author' in id3_info and id3_info['author']:
-                        return book_info
-                
+                book_info['opf_exists'] = True
+                # OPF data is trusted - return immediately
+                return book_info
+
+            # No OPF - extract from both ID3 and folder name as equal sources
+            book_info['opf_exists'] = False
+            id3_info = self._extract_from_id3_tags(folder)
+
+            # Get cleaned metadata from both sources
+            metadata_sources = extract_metadata_from_sources(
+                folder_path=folder,
+                id3_title=id3_info.get('title'),
+                id3_author=id3_info.get('author'),
+                id3_album=id3_info.get('album')
+            )
+
+            # Store multi-source data for parallel search
+            book_info['sources'] = metadata_sources
+
+            # For backward compatibility, populate main fields with best available data
+            # Prefer ID3 if valid and not garbage, otherwise use folder
+            id3_data = metadata_sources['id3']
+            folder_data = metadata_sources['folder']
+
+            if id3_data['valid'] and not id3_data['garbage_detected']:
+                # Use ID3 data for primary fields
+                if id3_data['title']:
+                    book_info['title'] = id3_data['title']
+                if id3_data['author']:
+                    book_info['author'] = id3_data['author']
+                if id3_data['album']:
+                    book_info['series'] = id3_data['album']
+                book_info['source'] = 'ID3 tags'
+                log.debug(f"Using ID3 metadata for {folder.name}: {id3_data['title']} by {id3_data['author']}")
+            elif folder_data['valid']:
+                # Fallback to folder name
+                book_info['title'] = folder_data['cleaned']
+                book_info['source'] = 'folder name (cleaned)'
+                log.debug(f"Using folder name for {folder.name}: {folder_data['cleaned']}")
+                if id3_data['garbage_detected']:
+                    log.warning(f"Garbage detected in ID3 tags for {folder.name}, using folder name instead")
+
+            # Copy additional ID3 fields if available
+            if 'year' in id3_info:
+                book_info['year'] = id3_info['year']
+            if 'narrator' in id3_info:
+                book_info['narrator'] = id3_info['narrator']
+
         except Exception as e:
             log.debug(f"Error extracting book info from {folder}: {e}")
 
         # If -R flag was used and no author was found, try parent directory
-        
+        # This indicates an organized library structure (Author/Book/)
         if book_root is not None and 'author' not in book_info:
-            
+
             try:
                 parent_dir = folder.parent
-                
-                
+
+
                 # Resolve both paths to handle UNC vs drive letter issues
                 parent_resolved = parent_dir.resolve()
                 root_resolved = book_root.resolve()
-                
-                
+
+
                 # Extract author from parent if parent is book_root or within book_root
                 # This handles structures like: -R "Author/" discovers "Author/Book"
                 # or -R "Root/" discovers "Root/Author/Book"
@@ -566,16 +639,16 @@ class BadaBoomBooksApp:
                 except AttributeError:
                     # Python < 3.9 compatibility
                     is_within_root = root_resolved in parent_resolved.parents or parent_resolved == root_resolved
-                
+
                 if is_within_root:
                     book_info['author'] = parent_dir.name
-                    
+                    book_info['source'] = 'parent directory'
                     log.debug(f"Extracted author '{parent_dir.name}' from parent directory for {folder.name}")
-                
+
             except Exception as e:
                 log.debug(f"Error extracting author from parent directory for {folder}: {e}")
 
-        
+
         return book_info
     
     def _extract_from_opf(self, opf_file: Path) -> dict:
