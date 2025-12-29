@@ -29,7 +29,8 @@
       "Bash(python -m py_compile:*)",
       "Bash(python -c:*)",
       "Bash(python -m pytest:*)",
-      "Bash(python test_author_extraction.py:*)"
+      "Bash(python test_author_extraction.py:*)",
+      "Bash(taskkill:*)"
     ]
   }
 }

@@ -186,6 +186,26 @@ class QueueManager:
         cursor.execute('SELECT 1')
         cursor.fetchone()
 
+    def flush_huey_queue(self):
+        """
+        Flush all pending tasks from Huey's task queue.
+
+        This is used when resuming a job to ensure stale tasks from previous
+        runs don't interfere with the new execution mode (e.g., switching from
+        daemon mode to interactive mode).
+
+        WARNING: This affects ALL jobs, not just the current one. Use carefully.
+        """
+        try:
+            # Huey stores tasks in its SqliteStorage
+            # flush_queue() removes all pending tasks from the queue table
+            huey.storage.flush_queue()
+            log.info(f"Flushed Huey task queue successfully")
+            return True
+        except Exception as e:
+            log.error(f"Failed to flush Huey queue: {e}", exc_info=True)
+            return False
+
     def create_job(self, args: ProcessingArgs, user_id: Optional[str] = None) -> str:
         """
         Create a new processing job.
@@ -314,7 +334,8 @@ class QueueManager:
                 COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) as failed,
                 COALESCE(SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END), 0) as skipped,
                 COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0) as running,
-                COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending
+                COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending,
+                COALESCE(SUM(CASE WHEN status = 'waiting_for_user' THEN 1 ELSE 0 END), 0) as waiting_for_user
             FROM tasks WHERE job_id = ?
         """, (job_id,))
 
@@ -326,7 +347,7 @@ class QueueManager:
                 if result[key] is None:
                     result[key] = 0
             return result
-        return {'total': 0, 'completed': 0, 'failed': 0, 'skipped': 0, 'running': 0, 'pending': 0}
+        return {'total': 0, 'completed': 0, 'failed': 0, 'skipped': 0, 'running': 0, 'pending': 0, 'waiting_for_user': 0}
 
     def get_incomplete_jobs(self) -> List[Dict]:
         """
@@ -352,13 +373,16 @@ class QueueManager:
         """)
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_pending_tasks(self, job_id: str, only_not_enqueued: bool = False) -> List[Dict]:
+    def get_pending_tasks(self, job_id: str, only_not_enqueued: bool = False,
+                         interactive: bool = False) -> List[Dict]:
         """
         Get all pending tasks for a job.
 
         Args:
             job_id: Job ID to get tasks for
             only_not_enqueued: If True, only return tasks that haven't been enqueued yet
+            interactive: If True, include 'waiting_for_user' tasks. If False (daemon mode),
+                        only return 'pending' tasks (excludes user input tasks)
 
         Returns:
             List of task dictionaries
@@ -368,24 +392,80 @@ class QueueManager:
 
         cursor = self.connection.cursor()
 
+        # Build status filter based on interactive mode
+        if interactive:
+            # Interactive: include both 'pending' and 'waiting_for_user'
+            status_filter = "status IN ('pending', 'waiting_for_user')"
+        else:
+            # Daemon/non-interactive: only 'pending' (skip user input tasks)
+            status_filter = "status = 'pending'"
+
         if only_not_enqueued:
             # Only get tasks that haven't been enqueued to Huey yet
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT * FROM tasks
-                WHERE job_id = ? AND status = 'pending' AND enqueued_at IS NULL
+                WHERE job_id = ? AND {status_filter} AND enqueued_at IS NULL
                 ORDER BY created_at
             """, (job_id,))
         else:
             # Get all pending tasks
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT * FROM tasks
-                WHERE job_id = ? AND status = 'pending'
+                WHERE job_id = ? AND {status_filter}
                 ORDER BY created_at
             """, (job_id,))
 
         return [dict(row) for row in cursor.fetchall()]
 
-    def enqueue_all_tasks(self, job_id: str, progress_callback: Optional[Callable] = None):
+    def enqueue_first_task(self, job_id: str) -> bool:
+        """
+        Enqueue only the first pending task for a job to Huey.
+        Used in interactive mode to process tasks one at a time.
+
+        Args:
+            job_id: Job ID to enqueue task for
+
+        Returns:
+            True if a task was enqueued, False if no tasks available
+        """
+        # Get only one task that hasn't been enqueued yet
+        # CRITICAL: Use interactive=False to exclude 'waiting_for_user' tasks
+        # We only want to enqueue genuinely pending tasks, not tasks waiting for user input
+        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True, interactive=False)
+
+        if not tasks:
+            log.debug(f"No new tasks to enqueue for job {job_id[:8]}")
+            return False
+
+        # Take only the first task
+        task = tasks[0]
+        task_id = task['id']
+        folder_path = task['folder_path']
+        url = task['url']
+
+        try:
+            # Enqueue to Huey
+            result = process_audiobook_task.schedule(
+                args=(task_id, job_id, folder_path, url),
+                delay=0
+            )
+
+            # Mark as enqueued to prevent duplicates
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                UPDATE tasks SET enqueued_at = ? WHERE id = ?
+            """, (datetime.now().isoformat(), task_id))
+            self.connection.commit()
+
+            log.info(f"Enqueued task {task_id[:8]}... ({Path(folder_path).name}) to Huey")
+            return True
+
+        except Exception as e:
+            log.error(f"Failed to enqueue task {task_id[:8]}: {e}", exc_info=True)
+            return False
+
+    def enqueue_all_tasks(self, job_id: str, progress_callback: Optional[Callable] = None,
+                         interactive: bool = False):
         """
         Enqueue all pending tasks for a job to Huey.
 
@@ -395,9 +475,11 @@ class QueueManager:
         Args:
             job_id: Job ID to enqueue tasks for
             progress_callback: Optional callback for progress updates
+            interactive: If True, include 'waiting_for_user' tasks. If False (daemon mode),
+                        only enqueue 'pending' tasks (excludes user input tasks)
         """
         # Only get tasks that haven't been enqueued yet
-        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True)
+        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True, interactive=interactive)
 
         if not tasks:
             log.debug(f"No new tasks to enqueue for job {job_id[:8]}")
@@ -706,7 +788,23 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
             file_processor, metadata_processor, audio_processor, log
         )
 
-        if success and not metadata.failed and not metadata.skip:
+        # Check if task was marked as waiting_for_user (daemon mode + needs interaction)
+        # In this case, the status was already set, don't overwrite it
+        # IMPORTANT: Check this FIRST before processing success/skip/failure
+        cursor = queue_manager.connection.cursor()
+        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        current_status = cursor.fetchone()[0]
+
+        if current_status == 'waiting_for_user':
+            # Task is waiting for user input, preserve status and don't mark as completed
+            # This prevents the task from being counted as done and allows next task to start
+            log.info(f"[Worker {worker_id}] Task {task_id[:8]} is waiting_for_user, preserving status")
+            # Clear the completed_at timestamp to prevent it from being counted as done
+            cursor.execute("""
+                UPDATE tasks SET completed_at = NULL WHERE id = ?
+            """, (task_id,))
+            queue_manager.connection.commit()
+        elif success and not metadata.failed and not metadata.skip:
             # Success
             result_json = json.dumps(metadata.to_dict(), default=str)
             queue_manager.update_task_status(
@@ -715,15 +813,16 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
                 completed_at=datetime.now().isoformat(),
                 result_json=result_json
             )
-            log.info(f"[Worker {worker_id}] Completed task {task_id}")
+            log.info(f"[Worker {worker_id}] Completed task {task_id[:8]}")
         elif metadata.skip:
-            # Skipped
+            # Skipped (user explicitly skipped, NOT waiting for input)
             queue_manager.update_task_status(
                 task_id,
                 'skipped',
                 completed_at=datetime.now().isoformat(),
                 error="Skipped by user"
             )
+            log.info(f"[Worker {worker_id}] Skipped task {task_id[:8]}")
         else:
             # Failed
             queue_manager.update_task_status(
@@ -732,7 +831,7 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
                 completed_at=datetime.now().isoformat(),
                 error=metadata.failed_exception or "Unknown error"
             )
-            log.error(f"[Worker {worker_id}] Failed task {task_id}: {metadata.failed_exception}")
+            log.error(f"[Worker {worker_id}] Failed task {task_id[:8]}: {metadata.failed_exception}")
 
     except Exception as e:
         # Task exception
@@ -748,7 +847,7 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
 
 
 def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
-                            metadata_processor, log) -> Optional[str]:
+                            metadata_processor, log, task_id: Optional[str] = None) -> Optional[str]:
     """
     Discover URL for a folder using auto-search or manual search.
 
@@ -760,6 +859,7 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
         args: ProcessingArgs with search configuration
         metadata_processor: MetadataProcessor for reading OPF files
         log: Logger instance
+        task_id: Optional task ID for queue tracking
 
     Returns:
         URL string, 'OPF' marker, or None if skipped/failed
@@ -793,6 +893,25 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
 
         # Use auto-search or manual search
         if args.auto_search:
+            # Check if we're in daemon mode (non-interactive) and not YOLO
+            # In daemon mode without YOLO, we should mark tasks requiring user input as waiting
+            if not args.interactive and not args.yolo and task_id:
+                from .queue_manager import QueueManager
+                queue_mgr = QueueManager()
+
+                # Mark task as waiting for user input
+                queue_mgr.set_task_waiting_for_user(
+                    task_id=task_id,
+                    input_type='auto_search_selection',
+                    prompt='Auto-search requires user selection (daemon mode - skipped)',
+                    options=[],
+                    context={'folder': str(folder_path), 'mode': 'daemon', 'reason': 'interactive_mode_disabled'}
+                )
+                queue_mgr.close()
+
+                log.info(f"Daemon mode: Marking {folder_path.name} as waiting_for_user (auto-search requires interaction)")
+                return None  # Skip for now, will be picked up by interactive worker later
+
             # Extract book info for context
             book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
 
@@ -813,10 +932,14 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
                 site_keys = [args.site]
 
             # Perform search
+            # Note: We're always in worker context when this function is called from worker thread
+            # Set in_worker_context=True to prevent blocking on input() calls
             auto_search = AutoSearchEngine(
                 debug_enabled=args.debug,
                 enable_ai_selection=args.llm_select,
-                yolo=args.yolo
+                yolo=args.yolo,
+                task_id=task_id,
+                in_worker_context=True
             )
             site_key, url, html = auto_search.search_and_select_with_context(
                 search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay
@@ -831,8 +954,26 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
 
         else:
             # Manual search
+            # Check if we're in daemon mode (non-interactive) and not YOLO
+            if not args.interactive and not args.yolo and task_id:
+                from .queue_manager import QueueManager
+                queue_mgr = QueueManager()
+
+                # Mark task as waiting for user input
+                queue_mgr.set_task_waiting_for_user(
+                    task_id=task_id,
+                    input_type='manual_url',
+                    prompt='Manual search requires user input (daemon mode - skipped)',
+                    options=[],
+                    context={'folder': str(folder_path), 'mode': 'daemon', 'reason': 'interactive_mode_disabled'}
+                )
+                queue_mgr.close()
+
+                log.info(f"Daemon mode: Marking {folder_path.name} as waiting_for_user (manual search requires interaction)")
+                return None  # Skip for now, will be picked up by interactive worker later
+
             book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
-            manual_search = ManualSearchHandler()
+            manual_search = ManualSearchHandler(task_id=task_id)
             site_key, url = manual_search.handle_manual_search_with_context(folder_path, book_info, args.site)
 
             if site_key and url:
@@ -959,9 +1100,28 @@ def _execute_processing_pipeline(metadata: BookMetadata, folder_path: Path, url_
         # Step 0: URL Discovery (if URL is None)
         if url_or_marker is None:
             log.info(f"Discovering URL for {folder_path.name}...")
-            url_or_marker = _discover_url_for_folder(folder_path, args, metadata_processor, log)
+            task_id = getattr(metadata, 'task_id', None)
+            url_or_marker = _discover_url_for_folder(folder_path, args, metadata_processor, log, task_id)
 
             if url_or_marker is None:
+                # Check if task was marked as waiting_for_user by checking the database
+                # This happens in both daemon mode and interactive mode when worker needs user input
+                if task_id:
+                    from .queue_manager import QueueManager
+                    qm = QueueManager()
+                    try:
+                        cursor = qm.connection.cursor()
+                        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+                        task_status = cursor.fetchone()
+                        if task_status and task_status[0] == 'waiting_for_user':
+                            # Task is waiting for user input, don't mark as failed
+                            log.info(f"Task {folder_path.name} is waiting_for_user, pausing processing")
+                            metadata.skip = True  # Use skip status to indicate it's not a failure
+                            return True  # Return success so task isn't marked as failed
+                    finally:
+                        qm.close()
+
+                # Normal failure case (user skipped, URL discovery failed, or no task_id)
                 metadata.mark_as_failed("URL discovery failed or skipped by user")
                 return False
 

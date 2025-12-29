@@ -273,12 +273,31 @@ class BadaBoomBooksApp:
             # Initialize processors (needed for URL discovery in workers)
             self._initialize_processors(args)
 
+            # Determine interactive mode:
+            # - If workers > 1: Force non-interactive (daemon mode)
+            # - If workers == 1: Use user's --interactive flag (default False)
+            interactive_mode = args.interactive if args.workers == 1 else False
+
+            if args.workers > 1 and args.interactive:
+                print(f"\n⚠️  Multiple workers detected ({args.workers}). Auto-disabling interactive mode to avoid task conflicts.")
+            elif interactive_mode:
+                print(f"\n✓ Interactive mode enabled - worker will handle user input tasks")
+            else:
+                print(f"\n✓ Daemon mode - skipping user input tasks (workers: {args.workers})")
+
             # Start worker threads
             print(f"\n🚀 Starting {args.workers} parallel workers...")
             self._start_workers(args.workers)
 
-            # Enqueue all tasks to Huey
-            self.queue_manager.enqueue_all_tasks(job_id)
+            # Enqueue tasks to Huey
+            if interactive_mode:
+                # Interactive mode: Start with just the first task to prevent mixed console output
+                # The monitoring loop will enqueue more as they complete
+                log.info("Interactive mode: Enqueueing first task only")
+                self.queue_manager.enqueue_first_task(job_id)
+            else:
+                # Daemon mode: Enqueue all tasks at once for parallel processing
+                self.queue_manager.enqueue_all_tasks(job_id, interactive=interactive_mode)
 
             # Monitor progress and wait for completion
             return self._monitor_job_progress(job_id, args)
@@ -992,11 +1011,19 @@ class BadaBoomBooksApp:
         """
         print('\n===================================== PROCESSING ====================================')
 
+        # Determine interactive mode (same logic as in _process_all_folders)
+        interactive_mode = args.interactive if args.workers == 1 else False
+
         last_running = 0
         last_completed = 0
         last_failed = 0
+        last_waiting = 0
         last_enqueue_check = 0
+        last_user_input_check = 0
         enqueue_check_interval = 30  # Check for new pending tasks every 30 iterations (~9 seconds)
+        # IMPORTANT: In interactive mode, check for waiting tasks on EVERY iteration (interval=0)
+        # to prevent race conditions where multiple tasks enter waiting_for_user before we detect them
+        user_input_check_interval = 0 if interactive_mode else 10
 
         iteration = 0
         while True:
@@ -1008,26 +1035,67 @@ class BadaBoomBooksApp:
             skipped = progress.get('skipped', 0)
             running = progress.get('running', 0)
             pending = progress.get('pending', 0)
+            waiting = progress.get('waiting_for_user', 0)
+
+            # In interactive mode, check for tasks waiting for user input FIRST (on EVERY iteration!)
+            # This prevents new tasks from being enqueued while waiting for user response
+            # CRITICAL: user_input_check_interval=0 for interactive mode to avoid race conditions
+            if interactive_mode and iteration - last_user_input_check >= user_input_check_interval:
+                waiting_tasks = self.queue_manager.get_tasks_waiting_for_user(job_id)
+                if waiting_tasks:
+                    # Handle user input tasks in main thread (can access stdin)
+                    self._handle_waiting_tasks(waiting_tasks, args)
+                    # After handling waiting tasks, immediately check if we need to enqueue more
+                    # This prevents the delay until next enqueue_check_interval
+                    fresh_progress = self.queue_manager.get_job_progress(job_id)
+                    waiting_count = fresh_progress.get('waiting_for_user', 0)
+                    running_count = fresh_progress.get('running', 0)
+                    if waiting_count == 0 and running_count == 0:
+                        # All waiting tasks resolved and no running tasks, enqueue next immediately
+                        enqueued = self.queue_manager.enqueue_first_task(job_id)
+                        if enqueued:
+                            log.info("Interactive mode: Enqueued next task after handling user input")
+                        last_enqueue_check = iteration  # Reset counter to prevent duplicate enqueue
+                last_user_input_check = iteration
 
             # Periodically check for and enqueue new pending tasks
             # This handles the case where another process (discovery) is still creating tasks
+            # In interactive mode, only enqueue if no tasks are waiting for user input
             iteration += 1
             if iteration - last_enqueue_check >= enqueue_check_interval:
-                pending_tasks = self.queue_manager.get_pending_tasks(job_id)
-                if pending_tasks:
-                    # Enqueue any tasks that haven't been queued yet
-                    log.info(f"Found {len(pending_tasks)} pending tasks, enqueueing...")
-                    self.queue_manager.enqueue_all_tasks(job_id)
-                last_enqueue_check = iteration
+                # In interactive mode, check if there are waiting or running tasks before enqueueing more
+                if interactive_mode:
+                    waiting_count = self.queue_manager.get_job_progress(job_id).get('waiting_for_user', 0)
+                    running_count = self.queue_manager.get_job_progress(job_id).get('running', 0)
+                    if waiting_count > 0 or running_count > 0:
+                        # Don't enqueue new tasks while any task is running or waiting
+                        log.debug(f"Skipping enqueue: {running_count} running, {waiting_count} waiting")
+                        last_enqueue_check = iteration
+                    else:
+                        # No tasks running or waiting, enqueue the next one
+                        enqueued = self.queue_manager.enqueue_first_task(job_id)
+                        if enqueued:
+                            log.info("Interactive mode: Enqueued next task")
+                        last_enqueue_check = iteration
+                else:
+                    # Daemon mode: Enqueue all pending tasks for parallel processing
+                    pending_tasks = self.queue_manager.get_pending_tasks(job_id, interactive=interactive_mode)
+                    if pending_tasks:
+                        # Enqueue any tasks that haven't been queued yet
+                        log.info(f"Found {len(pending_tasks)} pending tasks, enqueueing...")
+                        self.queue_manager.enqueue_all_tasks(job_id, interactive=interactive_mode)
+                    last_enqueue_check = iteration
 
             # Show progress if changed
-            if running != last_running or completed != last_completed or failed != last_failed:
+            if running != last_running or completed != last_completed or failed != last_failed or waiting != last_waiting:
                 percent = ((completed + failed + skipped) / total * 100) if total > 0 else 0
-                print(f"\r[{percent:5.1f}%] Completed: {completed} | Failed: {failed} | Running: {running} | Pending: {pending}    ", end='', flush=True)
+                waiting_str = f" | Waiting: {waiting}" if interactive_mode and waiting > 0 else ""
+                print(f"\r[{percent:5.1f}%] Completed: {completed} | Failed: {failed} | Running: {running} | Pending: {pending}{waiting_str}    ", end='', flush=True)
 
                 last_running = running
                 last_completed = completed
                 last_failed = failed
+                last_waiting = waiting
 
             # Check if done
             if completed + failed + skipped >= total:
@@ -1059,6 +1127,173 @@ class BadaBoomBooksApp:
         else:
             print("\n✅ All books processed successfully!")
             return 0
+
+    def _handle_waiting_tasks(self, waiting_tasks: List[dict], args: ProcessingArgs) -> None:
+        """
+        Handle tasks waiting for user input in interactive mode.
+
+        This method runs in the main thread and can access stdin to prompt the user.
+        After getting user input, it resumes the task by updating its status and URL.
+
+        Args:
+            waiting_tasks: List of tasks waiting for user input
+            args: Processing arguments
+        """
+        for task in waiting_tasks:
+            task_id = task['id']
+            folder_path = Path(task['folder_path'])
+            input_type = task['user_input_type']
+            prompt_text = task['user_input_prompt']
+
+            # Display task context
+            print(f"\n{'='*80}")
+            print(f"⏸  Task waiting for input: {folder_path.name}")
+            print(f"   Type: {input_type}")
+
+            # Parse context if available (may already be parsed by get_tasks_waiting_for_user)
+            import json
+            context_raw = task.get('user_input_context')
+            if isinstance(context_raw, dict):
+                context = context_raw  # Already parsed
+            elif context_raw:
+                context = json.loads(context_raw)  # Still a JSON string
+            else:
+                context = {}
+
+            # Show book info if available
+            if 'book_info' in context:
+                book_info = context['book_info']
+                if book_info.get('title'):
+                    print(f"   Title: {book_info['title']}")
+                if book_info.get('author'):
+                    print(f"   Author: {book_info['author']}")
+
+            # Parse options if available (may already be parsed by get_tasks_waiting_for_user)
+            options_raw = task.get('user_input_options')
+            if isinstance(options_raw, list):
+                options = options_raw  # Already parsed
+            elif options_raw:
+                options = json.loads(options_raw)  # Still a JSON string
+            else:
+                options = []
+
+            # Display options with LLM scores
+            if options:
+                print(f"\nOptions:")
+                for option in options:
+                    num = option.get('number', 0)
+                    if num == 0:
+                        # Skip option
+                        default_marker = " ⭐ DEFAULT" if option.get('is_default') else ""
+                        print(f"  [{num}] {option.get('label', 'Skip this book')}{default_marker}")
+                        continue
+
+                    # Regular candidate option
+                    is_default = option.get('is_default', False)
+                    default_marker = " 🏆 ⭐ DEFAULT" if is_default else ""
+
+                    # Format scores if available
+                    score_str = ""
+                    llm_score = option.get('llm_score')
+                    final_score = option.get('final_score')
+                    if llm_score is not None:
+                        score_str = f" {llm_score:.2f}"
+                        if final_score and abs(llm_score - final_score) > 0.001:
+                            score_str += f" (weighted: {final_score:.2f})"
+
+                    site_key = option.get('site_key', 'unknown')
+                    title = option.get('title', 'Unknown')
+                    url = option.get('url', '')
+
+                    print(f"  [{num}]{default_marker} [{site_key}]{score_str}")
+                    print(f"      {title}")
+                    if url:
+                        print(f"      {url}")
+
+            print(f"\n{prompt_text}")
+
+            # Get user input
+            user_input = input().strip()
+
+            # Process input based on type
+            if input_type in ['manual_selection', 'auto_search_selection']:
+                # Parse selection
+                try:
+                    # Parse user input or use default
+                    if user_input == "" and context.get('default_choice') is not None:
+                        choice = context['default_choice']
+                        print(f"Using default: {choice}")
+                    else:
+                        choice = int(user_input)
+
+                    if choice == 0:
+                        # Skip
+                        self.queue_manager.update_task_status(task_id, 'skipped', error="Skipped by user")
+                        print(f"⏭  Skipped {folder_path.name}")
+                    else:
+                        # Find the option with matching number
+                        selected_option = None
+                        for opt in options:
+                            if opt.get('number') == choice:
+                                selected_option = opt
+                                break
+
+                        if selected_option and selected_option.get('url'):
+                            selected_url = selected_option['url']
+                            self.queue_manager.resume_task_from_user_input(
+                                task_id=task_id,
+                                user_response=selected_url,
+                                clear_input_fields=True
+                            )
+                            # Re-enqueue task (schedule it, don't run directly)
+                            from .queue_manager import process_audiobook_task
+                            process_audiobook_task.schedule(
+                                args=(task_id, task['job_id'], str(folder_path), selected_url),
+                                delay=0
+                            )
+                            print(f"✓ Resumed {folder_path.name}")
+                        else:
+                            # Invalid choice, ask again
+                            print(f"❌ Invalid choice: {choice}. Keeping task in waiting state.")
+                            continue
+
+                except ValueError:
+                    # Not a number, treat as custom URL
+                    if user_input.startswith('http'):
+                        self.queue_manager.resume_task_from_user_input(
+                            task_id=task_id,
+                            user_response=user_input,
+                            clear_input_fields=True
+                        )
+                        # Re-enqueue task (schedule it, don't run directly)
+                        from .queue_manager import process_audiobook_task
+                        process_audiobook_task.schedule(
+                            args=(task_id, task['job_id'], str(folder_path), user_input),
+                            delay=0
+                        )
+                        print(f"✓ Resumed {folder_path.name} with custom URL")
+                    else:
+                        print(f"❌ Invalid input. Keeping task in waiting state.")
+                        continue
+
+            elif input_type == 'manual_url':
+                # Manual URL entry
+                if user_input.startswith('http'):
+                    self.queue_manager.resume_task_from_user_input(
+                        task_id=task_id,
+                        user_response=user_input,
+                        clear_input_fields=True
+                    )
+                    # Re-enqueue task (schedule it, don't run directly)
+                    from .queue_manager import process_audiobook_task
+                    process_audiobook_task.schedule(
+                        args=(task_id, task['job_id'], str(folder_path), user_input),
+                        delay=0
+                    )
+                    print(f"✓ Resumed {folder_path.name}")
+                else:
+                    print(f"❌ Invalid URL. Keeping task in waiting state.")
+                    continue
 
     def _resume_job(self, job: dict, cli_args: ProcessingArgs) -> int:
         """
@@ -1140,12 +1375,47 @@ class BadaBoomBooksApp:
         # Initialize processors
         self._initialize_processors(args)
 
-        # Start workers
+        # Determine interactive mode (same logic as in _process_all_folders)
+        interactive_mode = args.interactive if args.workers == 1 else False
+
+        # CRITICAL: Flush Huey's queue BEFORE starting workers
+        # This prevents workers from picking up stale tasks from previous run
+        log.info("Flushing Huey queue to clear stale tasks from previous run...")
+        self.queue_manager.flush_huey_queue()
+
+        # Clear enqueued_at timestamps for pending tasks to allow re-enqueueing
+        # This is critical when switching modes (daemon->interactive or vice versa)
+        # because we need to re-enqueue tasks according to the current mode
+        cursor = self.queue_manager.connection.cursor()
+        cursor.execute("""
+            UPDATE tasks SET enqueued_at = NULL
+            WHERE job_id = ? AND status IN ('pending', 'waiting_for_user')
+        """, (job_id,))
+        cleared_count = cursor.rowcount
+        self.queue_manager.connection.commit()
+        if cleared_count > 0:
+            log.info(f"Cleared enqueued_at for {cleared_count} task(s) to allow re-enqueueing")
+
+        # Start workers AFTER flushing queue
         self._start_workers(args.workers)
 
         # Re-enqueue pending tasks
-        print(f"\n🔄 Re-enqueueing {total_pending} pending tasks...")
-        self.queue_manager.enqueue_all_tasks(job_id)
+        if interactive_mode:
+            # Interactive mode: Check if there are waiting tasks first
+            # Don't enqueue new tasks if there are already tasks waiting for user input
+            progress = self.queue_manager.get_job_progress(job_id)
+            waiting_count = progress.get('waiting_for_user', 0)
+
+            if waiting_count > 0:
+                print(f"\n⏸  Found {waiting_count} task(s) waiting for user input - will handle those first")
+            else:
+                # No waiting tasks, enqueue the first pending task
+                print(f"\n🔄 Re-enqueueing first task (interactive mode - {total_pending} total pending)...")
+                self.queue_manager.enqueue_first_task(job_id)
+        else:
+            # Daemon mode: Enqueue all tasks at once for parallel processing
+            print(f"\n🔄 Re-enqueueing {total_pending} pending tasks...")
+            self.queue_manager.enqueue_all_tasks(job_id, interactive=interactive_mode)
 
         # Monitor progress with stored args (includes yolo flag)
         return self._monitor_job_progress(job_id, args)

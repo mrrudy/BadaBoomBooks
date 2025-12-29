@@ -23,11 +23,13 @@ from ..utils import wait_with_backoff
 class AutoSearchEngine:
     """Handles automated search across multiple audiobook sites."""
 
-    def __init__(self, debug_enabled: bool = False, enable_ai_selection: bool = False, yolo: bool = False):
+    def __init__(self, debug_enabled: bool = False, enable_ai_selection: bool = False, yolo: bool = False, task_id: Optional[str] = None, in_worker_context: bool = False):
         self.debug_enabled = debug_enabled
         self.debug_dir = None
         self.enable_ai_selection = enable_ai_selection
         self.yolo = yolo
+        self.task_id = task_id  # Optional task ID for queue tracking
+        self.in_worker_context = in_worker_context  # True when running in background worker thread
 
         if debug_enabled:
             from ..config import root_path
@@ -378,6 +380,23 @@ class AutoSearchEngine:
         else:
             prompt = f"Select [0-{len(candidates)}]: "
 
+        # Mark task as waiting for user input if task_id is available
+        if self.task_id:
+            self._mark_task_waiting_for_user(
+                input_type='manual_selection',
+                prompt=prompt,
+                display_candidates=display_candidates,  # Use display order, not original
+                book_info=book_info,
+                search_term=search_term,
+                default_choice=default_choice
+            )
+
+            # If running in worker thread context, return early after marking task
+            # The task will be picked up later by main thread or web interface
+            if self.in_worker_context:
+                log.info("Worker context: Task marked as waiting_for_user, returning early")
+                return None, None, None
+
         while True:
             user_input = input(prompt).strip()
 
@@ -537,5 +556,88 @@ class AutoSearchEngine:
         else:
             # Fallback to search term and folder name
             print(safe_encode_text(f"🔍 Search term: {search_term}"))
-        
+
         print("="*80)
+
+    def _mark_task_waiting_for_user(
+        self,
+        input_type: str,
+        prompt: str,
+        display_candidates: List[tuple],
+        book_info: dict = None,
+        search_term: str = None,
+        default_choice: int = None
+    ):
+        """
+        Mark the task as waiting for user input in the queue database.
+
+        Args:
+            input_type: Type of input ('manual_selection' or 'llm_confirmation')
+            prompt: The prompt text to show user
+            display_candidates: List of (candidate, llm_score, final_score) tuples in display order
+            book_info: Book context information
+            search_term: The search term used
+            default_choice: The default selection number (or None)
+        """
+        if not self.task_id:
+            return  # No task tracking available
+
+        try:
+            from ..queue_manager import QueueManager
+
+            queue_manager = QueueManager()
+
+            # Build options list for database - use display order with scores
+            options = []
+            for i, (candidate, llm_score, final_score) in enumerate(display_candidates, 1):
+                option_dict = {
+                    'number': i,
+                    'site_key': candidate.site_key,
+                    'title': candidate.title,
+                    'url': candidate.url,
+                    'author': getattr(candidate, 'author', None),
+                    'series': getattr(candidate, 'series', None),
+                    'snippet': candidate.snippet[:100] if candidate.snippet else None,
+                    'is_default': (i == default_choice)
+                }
+
+                # Add scores if available (they're already matched to candidates)
+                if llm_score is not None:
+                    option_dict['llm_score'] = llm_score
+                if final_score is not None:
+                    option_dict['final_score'] = final_score
+
+                options.append(option_dict)
+
+            # Add skip option
+            options.append({
+                'number': 0,
+                'action': 'skip',
+                'label': 'Skip this book',
+                'is_default': (0 == default_choice)
+            })
+
+            # Build context dictionary
+            context = {
+                'search_term': search_term,
+                'book_info': book_info or {},
+                'has_llm_scores': bool(display_candidates and display_candidates[0][1] is not None),
+                'folder_path': book_info.get('folder_name') if book_info else None,
+                'default_choice': default_choice
+            }
+
+            # Mark task as waiting for user
+            queue_manager.set_task_waiting_for_user(
+                task_id=self.task_id,
+                input_type=input_type,
+                prompt=prompt,
+                options=options,
+                context=context
+            )
+
+            log.debug(f"Marked task {self.task_id[:8]} as waiting for user input: {input_type}")
+
+        except Exception as e:
+            # Don't fail the whole operation if tracking fails
+            log.warning(f"Failed to mark task as waiting for user: {e}")
+            log.debug(f"Task tracking error details:", exc_info=True)

@@ -188,6 +188,12 @@ class CLIHandler:
         )
 
         parser.add_argument(
+            '--interactive',
+            action='store_true',
+            help='Enable interactive mode (allows handling user input tasks). Automatically disabled when workers > 1'
+        )
+
+        parser.add_argument(
             '--resume',
             action='store_true',
             help='Resume most recent incomplete job'
@@ -260,6 +266,7 @@ class CLIHandler:
             # Queue system
             workers=parsed.workers,
             resume=parsed.resume,
+            interactive=parsed.interactive,
 
             # Debug
             debug=parsed.debug
