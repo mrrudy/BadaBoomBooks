@@ -106,7 +106,7 @@ class QueueManager:
                 completed_at TIMESTAMP,
                 worker_id TEXT,
                 FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
-                CONSTRAINT valid_task_status CHECK (status IN ('pending', 'running', 'completed', 'failed', 'skipped'))
+                CONSTRAINT valid_task_status CHECK (status IN ('pending', 'running', 'completed', 'failed', 'skipped', 'waiting_for_user'))
             )
         ''')
 
@@ -119,6 +119,30 @@ class QueueManager:
         if 'enqueued_at' not in columns:
             log.info("Adding enqueued_at column to tasks table")
             cursor.execute('ALTER TABLE tasks ADD COLUMN enqueued_at TIMESTAMP')
+            self.connection.commit()
+
+        # Schema migration: Add user input tracking columns if they don't exist
+        cursor.execute("PRAGMA table_info(tasks)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'user_input_type' not in columns:
+            log.info("Adding user_input_type column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN user_input_type TEXT')
+            self.connection.commit()
+
+        if 'user_input_prompt' not in columns:
+            log.info("Adding user_input_prompt column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN user_input_prompt TEXT')
+            self.connection.commit()
+
+        if 'user_input_options' not in columns:
+            log.info("Adding user_input_options column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN user_input_options TEXT')
+            self.connection.commit()
+
+        if 'user_input_context' not in columns:
+            log.info("Adding user_input_context column to tasks table")
+            cursor.execute('ALTER TABLE tasks ADD COLUMN user_input_context TEXT')
             self.connection.commit()
 
         # File locks table: Tracks directory creation locks
@@ -161,6 +185,26 @@ class QueueManager:
         # Force a simple read to refresh the connection's snapshot
         cursor.execute('SELECT 1')
         cursor.fetchone()
+
+    def flush_huey_queue(self):
+        """
+        Flush all pending tasks from Huey's task queue.
+
+        This is used when resuming a job to ensure stale tasks from previous
+        runs don't interfere with the new execution mode (e.g., switching from
+        daemon mode to interactive mode).
+
+        WARNING: This affects ALL jobs, not just the current one. Use carefully.
+        """
+        try:
+            # Huey stores tasks in its SqliteStorage
+            # flush_queue() removes all pending tasks from the queue table
+            huey.storage.flush_queue()
+            log.info(f"Flushed Huey task queue successfully")
+            return True
+        except Exception as e:
+            log.error(f"Failed to flush Huey queue: {e}", exc_info=True)
+            return False
 
     def create_job(self, args: ProcessingArgs, user_id: Optional[str] = None) -> str:
         """
@@ -290,7 +334,8 @@ class QueueManager:
                 COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) as failed,
                 COALESCE(SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END), 0) as skipped,
                 COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0) as running,
-                COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending
+                COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending,
+                COALESCE(SUM(CASE WHEN status = 'waiting_for_user' THEN 1 ELSE 0 END), 0) as waiting_for_user
             FROM tasks WHERE job_id = ?
         """, (job_id,))
 
@@ -302,7 +347,7 @@ class QueueManager:
                 if result[key] is None:
                     result[key] = 0
             return result
-        return {'total': 0, 'completed': 0, 'failed': 0, 'skipped': 0, 'running': 0, 'pending': 0}
+        return {'total': 0, 'completed': 0, 'failed': 0, 'skipped': 0, 'running': 0, 'pending': 0, 'waiting_for_user': 0}
 
     def get_incomplete_jobs(self) -> List[Dict]:
         """
@@ -328,13 +373,16 @@ class QueueManager:
         """)
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_pending_tasks(self, job_id: str, only_not_enqueued: bool = False) -> List[Dict]:
+    def get_pending_tasks(self, job_id: str, only_not_enqueued: bool = False,
+                         interactive: bool = False) -> List[Dict]:
         """
         Get all pending tasks for a job.
 
         Args:
             job_id: Job ID to get tasks for
             only_not_enqueued: If True, only return tasks that haven't been enqueued yet
+            interactive: If True, include 'waiting_for_user' tasks. If False (daemon mode),
+                        only return 'pending' tasks (excludes user input tasks)
 
         Returns:
             List of task dictionaries
@@ -344,24 +392,80 @@ class QueueManager:
 
         cursor = self.connection.cursor()
 
+        # Build status filter based on interactive mode
+        if interactive:
+            # Interactive: include both 'pending' and 'waiting_for_user'
+            status_filter = "status IN ('pending', 'waiting_for_user')"
+        else:
+            # Daemon/non-interactive: only 'pending' (skip user input tasks)
+            status_filter = "status = 'pending'"
+
         if only_not_enqueued:
             # Only get tasks that haven't been enqueued to Huey yet
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT * FROM tasks
-                WHERE job_id = ? AND status = 'pending' AND enqueued_at IS NULL
+                WHERE job_id = ? AND {status_filter} AND enqueued_at IS NULL
                 ORDER BY created_at
             """, (job_id,))
         else:
             # Get all pending tasks
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT * FROM tasks
-                WHERE job_id = ? AND status = 'pending'
+                WHERE job_id = ? AND {status_filter}
                 ORDER BY created_at
             """, (job_id,))
 
         return [dict(row) for row in cursor.fetchall()]
 
-    def enqueue_all_tasks(self, job_id: str, progress_callback: Optional[Callable] = None):
+    def enqueue_first_task(self, job_id: str) -> bool:
+        """
+        Enqueue only the first pending task for a job to Huey.
+        Used in interactive mode to process tasks one at a time.
+
+        Args:
+            job_id: Job ID to enqueue task for
+
+        Returns:
+            True if a task was enqueued, False if no tasks available
+        """
+        # Get only one task that hasn't been enqueued yet
+        # CRITICAL: Use interactive=False to exclude 'waiting_for_user' tasks
+        # We only want to enqueue genuinely pending tasks, not tasks waiting for user input
+        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True, interactive=False)
+
+        if not tasks:
+            log.debug(f"No new tasks to enqueue for job {job_id[:8]}")
+            return False
+
+        # Take only the first task
+        task = tasks[0]
+        task_id = task['id']
+        folder_path = task['folder_path']
+        url = task['url']
+
+        try:
+            # Enqueue to Huey
+            result = process_audiobook_task.schedule(
+                args=(task_id, job_id, folder_path, url),
+                delay=0
+            )
+
+            # Mark as enqueued to prevent duplicates
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                UPDATE tasks SET enqueued_at = ? WHERE id = ?
+            """, (datetime.now().isoformat(), task_id))
+            self.connection.commit()
+
+            log.info(f"Enqueued task {task_id[:8]}... ({Path(folder_path).name}) to Huey")
+            return True
+
+        except Exception as e:
+            log.error(f"Failed to enqueue task {task_id[:8]}: {e}", exc_info=True)
+            return False
+
+    def enqueue_all_tasks(self, job_id: str, progress_callback: Optional[Callable] = None,
+                         interactive: bool = False):
         """
         Enqueue all pending tasks for a job to Huey.
 
@@ -371,9 +475,11 @@ class QueueManager:
         Args:
             job_id: Job ID to enqueue tasks for
             progress_callback: Optional callback for progress updates
+            interactive: If True, include 'waiting_for_user' tasks. If False (daemon mode),
+                        only enqueue 'pending' tasks (excludes user input tasks)
         """
         # Only get tasks that haven't been enqueued yet
-        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True)
+        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True, interactive=interactive)
 
         if not tasks:
             log.debug(f"No new tasks to enqueue for job {job_id[:8]}")
@@ -412,6 +518,201 @@ class QueueManager:
                 progress_callback(job_id, len(tasks))
 
         log.info(f"Successfully enqueued {enqueued_count}/{len(tasks)} new tasks")
+
+    def get_jobs_for_user(self, user_id: str, status: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Get all jobs for a specific user.
+
+        Args:
+            user_id: User ID to filter by
+            status: Optional list of statuses to filter by
+
+        Returns:
+            List of job dictionaries
+        """
+        # Refresh connection to see latest updates from other processes
+        self.refresh_connection()
+
+        cursor = self.connection.cursor()
+
+        if status:
+            placeholders = ','.join(['?' for _ in status])
+            query = f"""
+                SELECT * FROM jobs
+                WHERE user_id = ? AND status IN ({placeholders})
+                ORDER BY created_at DESC
+            """
+            cursor.execute(query, [user_id] + status)
+        else:
+            cursor.execute("""
+                SELECT * FROM jobs
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+            """, (user_id,))
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_tasks_for_job(self, job_id: str, status: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Get all tasks for a specific job.
+
+        Args:
+            job_id: Job ID to get tasks for
+            status: Optional list of statuses to filter by
+
+        Returns:
+            List of task dictionaries
+        """
+        # Refresh connection to see latest updates from other processes
+        self.refresh_connection()
+
+        cursor = self.connection.cursor()
+
+        if status:
+            placeholders = ','.join(['?' for _ in status])
+            query = f"""
+                SELECT * FROM tasks
+                WHERE job_id = ? AND status IN ({placeholders})
+                ORDER BY created_at
+            """
+            cursor.execute(query, [job_id] + status)
+        else:
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE job_id = ?
+                ORDER BY created_at
+            """, (job_id,))
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    def set_task_waiting_for_user(
+        self,
+        task_id: str,
+        input_type: str,
+        prompt: str,
+        options: Optional[List[str]] = None,
+        context: Optional[Dict] = None
+    ):
+        """
+        Mark task as waiting for user input.
+
+        Args:
+            task_id: Task UUID
+            input_type: Type of input needed:
+                - 'llm_confirmation': Confirm LLM-selected candidate
+                - 'manual_selection': Select from multiple candidates
+                - 'manual_url': Enter URL in manual search mode
+            prompt: User-facing prompt text
+            options: Optional list of available options/candidates
+            context: Optional context data (book info, candidates, etc.)
+        """
+        cursor = self.connection.cursor()
+        cursor.execute("""
+            UPDATE tasks
+            SET status = 'waiting_for_user',
+                user_input_type = ?,
+                user_input_prompt = ?,
+                user_input_options = ?,
+                user_input_context = ?
+            WHERE id = ?
+        """, (
+            input_type,
+            prompt,
+            json.dumps(options) if options else None,
+            json.dumps(context, default=str) if context else None,
+            task_id
+        ))
+        self.connection.commit()
+        log.debug(f"Task {task_id[:8]} waiting for user input: {input_type}")
+
+    def get_tasks_waiting_for_user(self, job_id: Optional[str] = None) -> List[Dict]:
+        """
+        Get all tasks waiting for user input.
+
+        Args:
+            job_id: Optional job ID to filter by
+
+        Returns:
+            List of task dictionaries with parsed user_input fields
+        """
+        self.refresh_connection()
+        cursor = self.connection.cursor()
+
+        if job_id:
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE job_id = ? AND status = 'waiting_for_user'
+                ORDER BY created_at
+            """, (job_id,))
+        else:
+            cursor.execute("""
+                SELECT * FROM tasks
+                WHERE status = 'waiting_for_user'
+                ORDER BY created_at
+            """)
+
+        tasks = []
+        for row in cursor.fetchall():
+            task = dict(row)
+            # Parse JSON fields for convenience
+            if task.get('user_input_options'):
+                try:
+                    task['user_input_options'] = json.loads(task['user_input_options'])
+                except json.JSONDecodeError:
+                    pass
+            if task.get('user_input_context'):
+                try:
+                    task['user_input_context'] = json.loads(task['user_input_context'])
+                except json.JSONDecodeError:
+                    pass
+            tasks.append(task)
+
+        return tasks
+
+    def resume_task_from_user_input(
+        self,
+        task_id: str,
+        user_response: str,
+        clear_input_fields: bool = True
+    ):
+        """
+        Resume a task after receiving user input.
+
+        Args:
+            task_id: Task UUID
+            user_response: User's response (selection, URL, confirmation, etc.)
+            clear_input_fields: Whether to clear user_input_* fields (default: True)
+        """
+        cursor = self.connection.cursor()
+
+        if clear_input_fields:
+            cursor.execute("""
+                UPDATE tasks
+                SET status = 'pending',
+                    user_input_type = NULL,
+                    user_input_prompt = NULL,
+                    user_input_options = NULL,
+                    user_input_context = NULL,
+                    url = CASE
+                        WHEN ? != '' THEN ?
+                        ELSE url
+                    END
+                WHERE id = ?
+            """, (user_response, user_response, task_id))
+        else:
+            # Keep input fields for debugging/auditing
+            cursor.execute("""
+                UPDATE tasks
+                SET status = 'pending',
+                    url = CASE
+                        WHEN ? != '' THEN ?
+                        ELSE url
+                    END
+                WHERE id = ?
+            """, (user_response, user_response, task_id))
+
+        self.connection.commit()
+        log.debug(f"Task {task_id[:8]} resumed with user input")
 
     def close(self):
         """Close database connection."""
@@ -487,7 +788,23 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
             file_processor, metadata_processor, audio_processor, log
         )
 
-        if success and not metadata.failed and not metadata.skip:
+        # Check if task was marked as waiting_for_user (daemon mode + needs interaction)
+        # In this case, the status was already set, don't overwrite it
+        # IMPORTANT: Check this FIRST before processing success/skip/failure
+        cursor = queue_manager.connection.cursor()
+        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        current_status = cursor.fetchone()[0]
+
+        if current_status == 'waiting_for_user':
+            # Task is waiting for user input, preserve status and don't mark as completed
+            # This prevents the task from being counted as done and allows next task to start
+            log.info(f"[Worker {worker_id}] Task {task_id[:8]} is waiting_for_user, preserving status")
+            # Clear the completed_at timestamp to prevent it from being counted as done
+            cursor.execute("""
+                UPDATE tasks SET completed_at = NULL WHERE id = ?
+            """, (task_id,))
+            queue_manager.connection.commit()
+        elif success and not metadata.failed and not metadata.skip:
             # Success
             result_json = json.dumps(metadata.to_dict(), default=str)
             queue_manager.update_task_status(
@@ -496,15 +813,16 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
                 completed_at=datetime.now().isoformat(),
                 result_json=result_json
             )
-            log.info(f"[Worker {worker_id}] Completed task {task_id}")
+            log.info(f"[Worker {worker_id}] Completed task {task_id[:8]}")
         elif metadata.skip:
-            # Skipped
+            # Skipped (user explicitly skipped, NOT waiting for input)
             queue_manager.update_task_status(
                 task_id,
                 'skipped',
                 completed_at=datetime.now().isoformat(),
                 error="Skipped by user"
             )
+            log.info(f"[Worker {worker_id}] Skipped task {task_id[:8]}")
         else:
             # Failed
             queue_manager.update_task_status(
@@ -513,7 +831,7 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
                 completed_at=datetime.now().isoformat(),
                 error=metadata.failed_exception or "Unknown error"
             )
-            log.error(f"[Worker {worker_id}] Failed task {task_id}: {metadata.failed_exception}")
+            log.error(f"[Worker {worker_id}] Failed task {task_id[:8]}: {metadata.failed_exception}")
 
     except Exception as e:
         # Task exception
@@ -529,7 +847,7 @@ def process_audiobook_task(task_id: str, job_id: str, folder_path: str, url: str
 
 
 def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
-                            metadata_processor, log) -> Optional[str]:
+                            metadata_processor, log, task_id: Optional[str] = None) -> Optional[str]:
     """
     Discover URL for a folder using auto-search or manual search.
 
@@ -541,6 +859,7 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
         args: ProcessingArgs with search configuration
         metadata_processor: MetadataProcessor for reading OPF files
         log: Logger instance
+        task_id: Optional task ID for queue tracking
 
     Returns:
         URL string, 'OPF' marker, or None if skipped/failed
@@ -574,8 +893,27 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
 
         # Use auto-search or manual search
         if args.auto_search:
-            # Extract book info for context (simplified version - no book_root support in workers)
-            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log)
+            # Check if we're in daemon mode (non-interactive) and not YOLO
+            # In daemon mode without YOLO, we should mark tasks requiring user input as waiting
+            if not args.interactive and not args.yolo and task_id:
+                from .queue_manager import QueueManager
+                queue_mgr = QueueManager()
+
+                # Mark task as waiting for user input
+                queue_mgr.set_task_waiting_for_user(
+                    task_id=task_id,
+                    input_type='auto_search_selection',
+                    prompt='Auto-search requires user selection (daemon mode - skipped)',
+                    options=[],
+                    context={'folder': str(folder_path), 'mode': 'daemon', 'reason': 'interactive_mode_disabled'}
+                )
+                queue_mgr.close()
+
+                log.info(f"Daemon mode: Marking {folder_path.name} as waiting_for_user (auto-search requires interaction)")
+                return None  # Skip for now, will be picked up by interactive worker later
+
+            # Extract book info for context
+            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
 
             # Generate search term
             if book_info.get('title') and book_info.get('author'):
@@ -594,10 +932,14 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
                 site_keys = [args.site]
 
             # Perform search
+            # Note: We're always in worker context when this function is called from worker thread
+            # Set in_worker_context=True to prevent blocking on input() calls
             auto_search = AutoSearchEngine(
                 debug_enabled=args.debug,
                 enable_ai_selection=args.llm_select,
-                yolo=args.yolo
+                yolo=args.yolo,
+                task_id=task_id,
+                in_worker_context=True
             )
             site_key, url, html = auto_search.search_and_select_with_context(
                 search_term, site_keys, book_info, args.search_limit, args.download_limit, args.search_delay
@@ -612,8 +954,26 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
 
         else:
             # Manual search
-            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log)
-            manual_search = ManualSearchHandler()
+            # Check if we're in daemon mode (non-interactive) and not YOLO
+            if not args.interactive and not args.yolo and task_id:
+                from .queue_manager import QueueManager
+                queue_mgr = QueueManager()
+
+                # Mark task as waiting for user input
+                queue_mgr.set_task_waiting_for_user(
+                    task_id=task_id,
+                    input_type='manual_url',
+                    prompt='Manual search requires user input (daemon mode - skipped)',
+                    options=[],
+                    context={'folder': str(folder_path), 'mode': 'daemon', 'reason': 'interactive_mode_disabled'}
+                )
+                queue_mgr.close()
+
+                log.info(f"Daemon mode: Marking {folder_path.name} as waiting_for_user (manual search requires interaction)")
+                return None  # Skip for now, will be picked up by interactive worker later
+
+            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
+            manual_search = ManualSearchHandler(task_id=task_id)
             site_key, url = manual_search.handle_manual_search_with_context(folder_path, book_info, args.site)
 
             if site_key and url:
@@ -626,16 +986,16 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
         return None
 
 
-def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log) -> dict:
+def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log, book_root: Optional[Path] = None) -> dict:
     """
     Extract book information for URL discovery context.
-
-    Simplified version without book_root support (used in workers).
 
     Args:
         folder_path: Path to audiobook folder
         metadata_processor: MetadataProcessor for reading OPF
         log: Logger instance
+        book_root: If provided (when using -R flag), will attempt to extract
+                  author from parent directory when no author is found in metadata
 
     Returns:
         Dictionary with book info (folder_name, title, author, source)
@@ -687,13 +1047,28 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log)
             except Exception as e:
                 log.debug(f"Error reading ID3 tags for {folder_path.name}: {e}")
 
-        # Try parent directory for author if still not found
-        if 'author' not in book_info:
+        # If -R flag was used and no author was found, try parent directory
+        if book_root is not None and 'author' not in book_info:
             try:
                 parent_dir = folder_path.parent
-                if parent_dir and parent_dir.name:
+
+                # Resolve both paths to handle UNC vs drive letter issues
+                parent_resolved = parent_dir.resolve()
+                root_resolved = book_root.resolve()
+
+                # Extract author from parent if parent is book_root or within book_root
+                # This handles structures like: -R "Author/" discovers "Author/Book"
+                # or -R "Root/" discovers "Root/Author/Book"
+                try:
+                    is_within_root = parent_resolved.is_relative_to(root_resolved)
+                except AttributeError:
+                    # Python < 3.9 compatibility
+                    is_within_root = root_resolved in parent_resolved.parents or parent_resolved == root_resolved
+
+                if is_within_root:
                     book_info['author'] = parent_dir.name
                     log.debug(f"Extracted author '{parent_dir.name}' from parent directory for {folder_path.name}")
+
             except Exception as e:
                 log.debug(f"Error extracting author from parent directory for {folder_path.name}: {e}")
 
@@ -725,9 +1100,28 @@ def _execute_processing_pipeline(metadata: BookMetadata, folder_path: Path, url_
         # Step 0: URL Discovery (if URL is None)
         if url_or_marker is None:
             log.info(f"Discovering URL for {folder_path.name}...")
-            url_or_marker = _discover_url_for_folder(folder_path, args, metadata_processor, log)
+            task_id = getattr(metadata, 'task_id', None)
+            url_or_marker = _discover_url_for_folder(folder_path, args, metadata_processor, log, task_id)
 
             if url_or_marker is None:
+                # Check if task was marked as waiting_for_user by checking the database
+                # This happens in both daemon mode and interactive mode when worker needs user input
+                if task_id:
+                    from .queue_manager import QueueManager
+                    qm = QueueManager()
+                    try:
+                        cursor = qm.connection.cursor()
+                        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+                        task_status = cursor.fetchone()
+                        if task_status and task_status[0] == 'waiting_for_user':
+                            # Task is waiting for user input, don't mark as failed
+                            log.info(f"Task {folder_path.name} is waiting_for_user, pausing processing")
+                            metadata.skip = True  # Use skip status to indicate it's not a failure
+                            return True  # Return success so task isn't marked as failed
+                    finally:
+                        qm.close()
+
+                # Normal failure case (user skipped, URL discovery failed, or no task_id)
                 metadata.mark_as_failed("URL discovery failed or skipped by user")
                 return False
 
@@ -739,8 +1133,50 @@ def _execute_processing_pipeline(metadata: BookMetadata, folder_path: Path, url_
             if not opf_file:
                 metadata.mark_as_failed("No metadata.opf found")
                 return False
-            metadata = metadata_processor.read_opf_metadata(opf_file)
-            metadata.task_id = metadata.task_id  # Preserve task_id
+
+            opf_metadata = metadata_processor.read_opf_metadata(opf_file)
+            opf_metadata.task_id = metadata.task_id  # Preserve task_id
+
+            # If URL is present in OPF, try to scrape missing fields (cover_url, summary, etc.)
+            if opf_metadata.url:
+                log.info(f"Re-scraping from OPF source URL to supplement metadata: {opf_metadata.url}")
+                site_key = detect_url_site(opf_metadata.url)
+                if site_key:
+                    try:
+                        # Preprocess URL if needed
+                        if site_key == 'audible':
+                            preprocess_audible_url(opf_metadata)
+
+                        # Make HTTP request
+                        if site_key == 'audible':
+                            scraped_metadata, response = http_request_audible_api(opf_metadata, log)
+                        else:
+                            scraped_metadata, response = http_request_generic(opf_metadata, log)
+
+                        if not scraped_metadata.failed:
+                            # Scrape metadata
+                            if site_key == 'audible':
+                                scraper = AudibleScraper()
+                            elif site_key == 'goodreads':
+                                scraper = GoodreadsScraper()
+                            elif site_key == 'lubimyczytac':
+                                scraper = LubimyczytacScraper()
+                            else:
+                                log.warning(f"Unknown site for supplemental scraping: {site_key}")
+                                scraper = None
+
+                            if scraper:
+                                scraped_metadata = scraper.scrape_metadata(scraped_metadata, response, log)
+
+                                # Merge scraped data into OPF data (OPF takes precedence)
+                                for field in ['summary', 'genres', 'cover_url', 'language']:
+                                    if not getattr(opf_metadata, field) and getattr(scraped_metadata, field):
+                                        setattr(opf_metadata, field, getattr(scraped_metadata, field))
+                                        log.debug(f"Supplemented {field} from scraping")
+                    except Exception as e:
+                        log.warning(f"Failed to supplement OPF metadata from source URL: {e}")
+
+            metadata = opf_metadata
         else:
             metadata.url = url_or_marker
             site_key = detect_url_site(metadata.url)

@@ -26,9 +26,10 @@ from ..utils import generate_search_term, detect_url_site
 
 class ManualSearchHandler:
     """Handles manual search processes and clipboard monitoring."""
-    
-    def __init__(self):
+
+    def __init__(self, task_id: Optional[str] = None):
         self.clipboard_available = PYPERCLIP_AVAILABLE
+        self.task_id = task_id  # Optional task ID for queue tracking
     
     def handle_manual_search(self, folder_path: Path, site_filter: str = 'all') -> Tuple[Optional[str], Optional[str]]:
         """
@@ -229,7 +230,13 @@ class ManualSearchHandler:
             Tuple of (site_key, url) or (None, None) if skipped
         """
         print(f"\nEnter URL for '{folder_name}' (or 'skip' to skip):")
-        
+
+        # Mark task as waiting for user input if task_id is available
+        if self.task_id:
+            self._mark_task_waiting_for_user(
+                folder_name=folder_name
+            )
+
         while True:
             user_input = input("> ").strip()
             
@@ -248,6 +255,55 @@ class ManualSearchHandler:
             else:
                 print("Invalid URL. Please enter a valid audiobook site URL or 'skip'")
                 print("Supported sites:", ", ".join(cfg['domain'] for cfg in SCRAPER_REGISTRY.values()))
+
+    def _mark_task_waiting_for_user(self, folder_name: str):
+        """
+        Mark the task as waiting for user input in the queue database.
+
+        Args:
+            folder_name: Name of the folder being processed
+        """
+        if not self.task_id:
+            return  # No task tracking available
+
+        try:
+            from ..queue_manager import QueueManager
+
+            queue_manager = QueueManager()
+
+            # Build context
+            context = {
+                'folder_name': folder_name,
+                'input_mode': 'manual_search'
+            }
+
+            # Build options showing supported sites
+            options = [
+                {
+                    'action': 'enter_url',
+                    'label': f"Enter URL from: {', '.join(cfg['domain'] for cfg in SCRAPER_REGISTRY.values())}"
+                },
+                {
+                    'action': 'skip',
+                    'label': "Type 'skip' to skip this book"
+                }
+            ]
+
+            # Mark task as waiting for user
+            queue_manager.set_task_waiting_for_user(
+                task_id=self.task_id,
+                input_type='manual_url',
+                prompt=f"> ",
+                options=options,
+                context=context
+            )
+
+            log.debug(f"Marked task {self.task_id[:8]} as waiting for manual URL input")
+
+        except Exception as e:
+            # Don't fail the whole operation if tracking fails
+            log.warning(f"Failed to mark task as waiting for user: {e}")
+            log.debug(f"Task tracking error details:", exc_info=True)
 
 
 # Legacy function for backward compatibility

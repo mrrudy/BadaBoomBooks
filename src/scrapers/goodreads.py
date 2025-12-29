@@ -122,16 +122,16 @@ class GoodreadsScraper(BaseScraper):
         try:
             cover_url = ""
 
-            # Try meta og:image first
-            meta_img = soup.find("meta", property="og:image")
-            if meta_img and meta_img.get("content"):
-                cover_url = meta_img["content"].strip()
+            # Try ResponsiveImage img tag first (more reliable for actual book covers)
+            img_tag = soup.select_one('img.ResponsiveImage')
+            if img_tag and img_tag.get("src"):
+                cover_url = img_tag["src"].strip()
 
-            # Fallback: look for ResponsiveImage img tag
+            # Fallback: Try meta og:image
             if not cover_url:
-                img_tag = soup.select_one('img.ResponsiveImage')
-                if img_tag and img_tag.get("src"):
-                    cover_url = img_tag["src"].strip()
+                meta_img = soup.find("meta", property="og:image")
+                if meta_img and meta_img.get("content"):
+                    cover_url = meta_img["content"].strip()
 
             metadata.cover_url = cover_url
             logger.info(f"Cover URL scraped: {cover_url}")
@@ -335,8 +335,13 @@ class GoodreadsScraper(BaseScraper):
         try:
             cover_url = ""
 
-            # Try JSON-LD data first
-            if jsonld and "image" in jsonld:
+            # Try ResponsiveImage img tag first (most reliable for actual book covers)
+            img_tag = soup.select_one('img.ResponsiveImage')
+            if img_tag and img_tag.get("src"):
+                cover_url = img_tag["src"].strip()
+
+            # Fallback: Try JSON-LD data
+            if not cover_url and jsonld and "image" in jsonld:
                 cover_url = jsonld["image"].strip()
 
             # Fallback: Try meta og:image
@@ -344,12 +349,6 @@ class GoodreadsScraper(BaseScraper):
                 meta_img = soup.find("meta", property="og:image")
                 if meta_img and meta_img.get("content"):
                     cover_url = meta_img["content"].strip()
-
-            # Fallback: look for ResponsiveImage img tag
-            if not cover_url:
-                img_tag = soup.select_one('img.ResponsiveImage')
-                if img_tag and img_tag.get("src"):
-                    cover_url = img_tag["src"].strip()
 
             metadata.cover_url = cover_url
             logger.info(f"Cover URL scraped: {cover_url}")

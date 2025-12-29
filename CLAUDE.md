@@ -240,6 +240,96 @@ The main processing flow in [src/main.py](src/main.py):
 
 Original monolithic code preserved in `legacy/` folder. All new development uses modular architecture in `src/`.
 
+### Queue System and User Input Tracking
+
+The application uses a **database-backed queue system** for parallel processing and user input tracking:
+
+**Database:** `badaboombooksqueue.db` (SQLite, WAL mode)
+- **Jobs table**: One row per processing request (CLI run or web job)
+- **Tasks table**: One row per audiobook folder
+- **Task statuses**: `pending`, `running`, `completed`, `failed`, `skipped`, `waiting_for_user`
+
+**User Input Tracking:**
+
+Tasks requiring user interaction are marked with `waiting_for_user` status and stored with:
+- `user_input_type`: Type of input (`llm_confirmation`, `manual_selection`, `manual_url`)
+- `user_input_prompt`: The exact prompt text
+- `user_input_options`: JSON array of options/candidates
+- `user_input_context`: JSON object with book info, scores, etc.
+
+**Three types of user input:**
+1. **LLM Confirmation** ([auto_search.py:290](src/search/auto_search.py#L290)): Confirm AI-selected candidate
+   - Override: `--yolo` flag auto-accepts
+2. **Manual Selection** ([auto_search.py:317](src/search/auto_search.py#L317)): Choose from multiple candidates
+   - Override: `--yolo` picks first candidate
+3. **Manual URL Entry** ([manual_search.py:234](src/search/manual_search.py#L234)): Enter URL manually
+   - Override: None (manual mode always requires input)
+
+**Interactive Mode (`--interactive` flag):**
+
+The `--interactive` flag controls whether workers can handle tasks requiring user input:
+
+- **Interactive Mode** (`--interactive`): Worker processes both `pending` and `waiting_for_user` tasks
+  - Prompts user for input when needed (LLM confirmations, manual selections, manual URLs)
+  - **Requirement**: Must use `--workers 1` (single worker only)
+  - **Use case**: CLI with human operator present to respond to prompts
+
+- **Daemon Mode** (default, no `--interactive`): Worker processes only `pending` tasks
+  - Skips all `waiting_for_user` tasks automatically
+  - **Best for**: Batch processing, multiple workers, automated/unattended runs
+  - **Use case**: Server deployments, cron jobs, parallel processing
+
+**Auto-detection behavior:**
+- If `--workers > 1`: Interactive mode is **automatically disabled** (forced to daemon mode)
+  - Prevents multiple workers from fighting for user input (mixed prompts)
+  - Warning displayed if user explicitly requests `--interactive` with multiple workers
+- If `--workers 1`: Interactive mode respects `--interactive` flag (default: daemon)
+
+**Examples:**
+```bash
+# Daemon mode (default) - skip user input tasks
+python BadaBoomBooks.py --auto-search --opf --id3-tag -O "C:\Output" -R "C:\Input"
+
+# Interactive mode - single worker handles user prompts
+python BadaBoomBooks.py --interactive --workers 1 --auto-search --opf -O "C:\Output" -R "C:\Input"
+
+# Multiple workers - daemon mode (interactive auto-disabled)
+python BadaBoomBooks.py --workers 4 --auto-search --opf -O "C:\Output" -R "C:\Input"
+
+# Error: Cannot use interactive with multiple workers
+python BadaBoomBooks.py --interactive --workers 4 --auto-search --opf -O "C:\Output" -R "C:\Input"
+# Output: ❌ Cannot use --interactive with multiple workers
+```
+
+**Worker Types (legacy terminology):**
+- **Non-interactive workers** (`--yolo` or daemon mode): Filter for `status=['pending']` only
+- **Interactive workers** (CLI with `--interactive` flag, web): Handle both `pending` and `waiting_for_user`
+
+**Key APIs** ([queue_manager.py](src/queue_manager.py)):
+```python
+# Mark task waiting for user input
+queue_manager.set_task_waiting_for_user(
+    task_id=task_id,
+    input_type='manual_selection',
+    prompt='Select [1-3]:',
+    options=[...],
+    context={...}
+)
+
+# Get tasks waiting for user input
+waiting = queue_manager.get_tasks_waiting_for_user(job_id=job_id)
+
+# Resume after user responds
+queue_manager.resume_task_from_user_input(
+    task_id=task_id,
+    user_response='https://...'
+)
+```
+
+**Documentation:**
+- Full guide: [USER_INPUT_TASKS.md](USER_INPUT_TASKS.md)
+- Quick reference: [TASK_TYPES_QUICK_REF.md](TASK_TYPES_QUICK_REF.md)
+
 ## Testing
 
 ### Automated Tests

@@ -1,0 +1,234 @@
+/* Dry-run visual feedback */
+.dry-run-active {
+    opacity: 0.6;
+    filter: saturate(0.5);
+    position: relative;
+}
+
+.dry-run-active::after {
+    content: '(Dry Run)';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background-color: hsl(var(--wa));
+    color: hsl(var(--wac));
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+/* Touch targets for mobile */
+@media (max-width: 768px) {
+    .file-item {
+        min-height: 56px;
+        padding: 12px;
+    }
+
+    button, .btn {
+        min-height: 48px;
+    }
+
+    input[type="checkbox"] {
+        min-width: 24px;
+        min-height: 24px;
+    }
+}
+
+/* File browser styling */
+.file-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: background-color 0.2s;
+    cursor: pointer;
+}
+
+.file-item:hover {
+    background-color: hsl(var(--b3));
+}
+
+.file-item.selected {
+    background-color: hsl(var(--p) / 0.1);
+    border: 2px solid hsl(var(--p));
+}
+
+.file-item-icon {
+    font-size: 1.5rem;
+    margin-right: 12px;
+}
+
+.file-item-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Progress bar custom colors */
+.progress-success {
+    background-color: hsl(var(--su));
+}
+
+.progress-error {
+    background-color: hsl(var(--er));
+}
+
+.progress-warning {
+    background-color: hsl(var(--wa));
+}
+
+/* Task status badges */
+.badge-pending {
+    background-color: hsl(var(--b3));
+}
+
+.badge-running {
+    background-color: hsl(var(--in));
+    color: hsl(var(--inc));
+}
+
+.badge-completed {
+    background-color: hsl(var(--su));
+    color: hsl(var(--suc));
+}
+
+.badge-failed {
+    background-color: hsl(var(--er));
+    color: hsl(var(--erc));
+}
+
+.badge-skipped {
+    background-color: hsl(var(--wa));
+    color: hsl(var(--wac));
+}
+
+/* Loading spinner */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator {
+    display: inline-block;
+}
+
+.spinner {
+    border: 3px solid hsl(var(--b3));
+    border-top: 3px solid hsl(var(--p));
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive grid adjustments */
+@media (min-width: 1024px) {
+    .section-grid {
+        grid-template-columns: 2fr 1fr;
+    }
+}
+
+/* Scrollable containers */
+.scrollable-container {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.scrollable-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.scrollable-container::-webkit-scrollbar-track {
+    background: hsl(var(--b3));
+    border-radius: 4px;
+}
+
+.scrollable-container::-webkit-scrollbar-thumb {
+    background: hsl(var(--bc) / 0.3);
+    border-radius: 4px;
+}
+
+.scrollable-container::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--bc) / 0.5);
+}
+
+/* Form section styling */
+.form-section {
+    margin-bottom: 1.5rem;
+}
+
+.form-section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: hsl(var(--bc));
+}
+
+/* Checkbox group styling */
+.checkbox-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"]:disabled + span {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Modal adjustments */
+.modal-box {
+    max-width: 90vw;
+    max-height: 90vh;
+}
+
+@media (min-width: 768px) {
+    .modal-box {
+        max-width: 800px;
+    }
+}
+
+/* Collapse sections */
+.collapse-title {
+    font-weight: 600;
+}
+
+/* Error message styling */
+.error-message {
+    background-color: hsl(var(--er) / 0.1);
+    border-left: 4px solid hsl(var(--er));
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+/* Success message styling */
+.success-message {
+    background-color: hsl(var(--su) / 0.1);
+    border-left: 4px solid hsl(var(--su));
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+/* Info message styling */
+.info-message {
+    background-color: hsl(var(--in) / 0.1);
+    border-left: 4px solid hsl(var(--in));
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-top: 8px;
+}

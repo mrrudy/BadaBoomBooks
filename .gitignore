@@ -157,3 +157,4 @@ src/tests/data/expected/*
 badaboombooksqueue.db*
 
 legacy.old/*
+node_modules/*

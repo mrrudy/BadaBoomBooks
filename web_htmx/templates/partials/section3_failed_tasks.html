@@ -1,0 +1,71 @@
+<!-- Section 3: Failed Tasks Partial -->
+
+<div class="collapse collapse-arrow bg-base-200">
+    <input type="checkbox" />
+    <div class="collapse-title text-lg font-medium">
+        Failed Tasks
+        {% if tasks %}
+        <span class="badge badge-failed ml-2">{{ tasks | length }}</span>
+        {% endif %}
+    </div>
+    <div class="collapse-content">
+        {% if tasks %}
+        <div class="space-y-2 mt-2">
+            {% for task in tasks %}
+            <div class="card bg-error/10 border border-error/30">
+                <div class="card-body p-4">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-medium text-sm">
+                                {{ task.folder_path | replace('\\', '/') | regex_replace('.*/', '') }}
+                            </div>
+                            <div class="text-xs text-base-content/60 mt-1">
+                                {{ task.folder_path }}
+                            </div>
+                            {% if task.error %}
+                            <div class="text-xs text-error mt-2">
+                                <strong>Error:</strong> {{ task.error }}
+                            </div>
+                            {% endif %}
+                            <div class="text-xs text-base-content/60 mt-1">
+                                Retry count: {{ task.retry_count }}/{{ task.max_retries }}
+                            </div>
+                        </div>
+                        <button class="btn btn-sm btn-primary"
+                                onclick="retryTask('{{ task.id }}', '{{ task.folder_path }}')">
+                            Retry
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-base-content/60">
+            <p>No failed tasks</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function retryTask(taskId, folderPath) {
+    // Clear current selection
+    fetch('/browse/clear', { method: 'POST' })
+        .then(() => {
+            // Add failed task folder to selection
+            return fetch('/browse/select', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: folderPath, action: 'add' })
+            });
+        })
+        .then(() => {
+            // Scroll to top (Section 1)
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            // Show notification
+            alert(`Folder added to selection: ${folderPath}\n\nPlease review settings and click Start Processing.`);
+        });
+}
+</script>

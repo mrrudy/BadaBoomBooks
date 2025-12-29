@@ -54,7 +54,7 @@ class CLIHandler:
             '-R', '--book-root',
             dest='book_root',
             metavar='BOOK_ROOT',
-            help='Recursively discover audiobook folders from this root directory. When no author metadata is found, will extract author name from parent directory (e.g., "Author/Book" structure).'
+            help='Recursively discover audiobook folders from this structured input directory. Expects "Author/Title" folder hierarchy. When author metadata is missing, extracts author name from parent directory. Use this for organized collections, not random folders.'
         )
         
         # === OPERATION MODE ===
@@ -188,6 +188,12 @@ class CLIHandler:
         )
 
         parser.add_argument(
+            '--interactive',
+            action='store_true',
+            help='Enable interactive mode (allows handling user input tasks). Automatically disabled when workers > 1'
+        )
+
+        parser.add_argument(
             '--resume',
             action='store_true',
             help='Resume most recent incomplete job'
@@ -260,6 +266,7 @@ class CLIHandler:
             # Queue system
             workers=parsed.workers,
             resume=parsed.resume,
+            interactive=parsed.interactive,
 
             # Debug
             debug=parsed.debug
@@ -331,13 +338,12 @@ book-meister (v{__version__})
 =========================================================================
 """)
     
-    def handle_validation_errors(self, errors: List[str], yolo: bool = False):
+    def handle_validation_errors(self, errors: List[str]):
         """
         Handle validation errors by printing them and exiting.
 
         Args:
             errors: List of error messages
-            yolo: Whether yolo mode is enabled (skip exit prompt)
         """
         if not errors:
             return
@@ -347,25 +353,22 @@ book-meister (v{__version__})
             print(f"  - {error}")
 
         print("\nUse --help for usage information.")
-        if not yolo:
-            input("\nPress enter to exit...")
         sys.exit(1)
     
-    def confirm_processing(self, folders: List[Path], dry_run: bool = False, yolo: bool = False) -> bool:
+    def confirm_processing(self, folders: List[Path], dry_run: bool = False) -> bool:
         """
-        Confirm processing with user.
+        Display processing information (no longer prompts for confirmation).
 
         Args:
             folders: List of folders to process
             dry_run: Whether this is a dry run
-            yolo: Whether yolo mode is enabled (auto-accept)
 
         Returns:
-            True if user confirms or yolo mode is enabled, False otherwise
+            Always returns True
         """
         mode = "DRY RUN" if dry_run else "PROCESSING"
 
-        print(f"\n=== {mode} CONFIRMATION ===")
+        print(f"\n=== {mode} ===")
         print(f"Ready to process {len(folders)} folder(s):")
 
         for folder in folders[:10]:  # Show first 10
@@ -381,12 +384,7 @@ book-meister (v{__version__})
         if dry_run:
             print("\nThis is a dry run - no files will be modified.")
 
-        if yolo:
-            print("\n🚀 YOLO mode enabled - auto-accepting...")
-            return True
-
-        response = input("\nContinue? (y/N): ").strip().lower()
-        return response in ['y', 'yes']
+        return True
     
     def get_user_input(self, prompt: str, default: str = "") -> str:
         """

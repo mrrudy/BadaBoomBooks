@@ -1,0 +1,298 @@
+<!-- File Browser List Partial -->
+
+{% if error %}
+<div class="error-message">
+    <p><strong>Error:</strong> {{ error }}</p>
+</div>
+{% else %}
+<!-- Breadcrumb / Current Path -->
+<div class="flex items-center justify-between mb-4">
+    <div class="text-sm breadcrumbs">
+        <ul>
+            <li>
+                {% if is_drives %}
+                <span class="font-bold">{{ current_path }}</span>
+                {% else %}
+                <a hx-get="/browse/drives"
+                   hx-target="#file-browser-content"
+                   hx-swap="innerHTML"
+                   class="link link-primary">
+                    Computer
+                </a>
+                {% endif %}
+            </li>
+            {% if not is_drives %}
+            <li class="font-bold">{{ current_path }}</li>
+            {% endif %}
+        </ul>
+    </div>
+
+    <div class="flex gap-2">
+        {% if parent %}
+        <button hx-get="/browse?path={{ parent }}"
+                hx-target="#file-browser-content"
+                hx-swap="innerHTML"
+                class="btn btn-sm btn-ghost">
+            ⬆️ Up
+        </button>
+        {% endif %}
+
+        {% if not is_drives %}
+        <button data-path="{{ current_path }}"
+                onclick="selectCurrentFolder(this.dataset.path)"
+                class="btn btn-sm btn-primary">
+            ✓ Select This Folder
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Folder/Drive List -->
+<div class="space-y-2 scrollable-container" style="max-height: 500px;">
+    {% if items %}
+        {% for item in items %}
+        {% if item.accessible and item.type != 'audiobook' %}
+        <!-- Regular folder/drive - Clickable to navigate -->
+        <div class="file-item"
+             data-path="{{ item.path }}"
+             hx-get="/browse?path={{ item.path }}"
+             hx-target="#file-browser-content"
+             hx-swap="innerHTML"
+             style="cursor: pointer;">
+
+            <div class="file-item-icon">
+                {% if item.type == 'drive' %}
+                💾
+                {% else %}
+                📁
+                {% endif %}
+            </div>
+
+            <div class="file-item-name flex-1">
+                <div class="font-medium">{{ item.name }}</div>
+            </div>
+
+            <div class="text-xs text-base-content/60">
+                → Click to open
+            </div>
+        </div>
+
+        {% elif item.type == 'audiobook' %}
+        <!-- Audiobook folder - Clickable to select -->
+        <div class="file-item {% if item.path in session.get('selected_folders', []) %}selected{% endif %}"
+             data-path="{{ item.path }}"
+             onclick="toggleAudiobookSelection(this, event)">
+
+            <div class="file-item-icon">
+                🎧
+            </div>
+
+            <div class="file-item-name flex-1">
+                <div class="font-medium">{{ item.name }}</div>
+                <div class="text-xs text-base-content/60">
+                    {{ item.audio_count }} audio file{% if item.audio_count != 1 %}s{% endif %}
+                </div>
+            </div>
+
+            <div class="badge badge-primary badge-sm">Audiobook</div>
+
+            <button data-nav-path="{{ item.path }}"
+                    onclick="navigateIntoAudiobook(event, this.dataset.navPath)"
+                    class="btn btn-ghost btn-xs ml-2"
+                    title="Browse inside this folder">
+                🔍
+            </button>
+        </div>
+
+        {% else %}
+        <!-- Inaccessible drive/folder -->
+        <div class="file-item opacity-50"
+             data-path="{{ item.path }}"
+             style="cursor: not-allowed;">
+
+            <div class="file-item-icon">
+                🔒
+            </div>
+
+            <div class="file-item-name flex-1">
+                <div class="font-medium">{{ item.name }}</div>
+            </div>
+
+            <div class="text-xs text-error">
+                No access
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    {% else %}
+    <div class="text-center py-8 text-base-content/60">
+        <p>No folders found in this directory</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Selected Folders Display -->
+<div id="selected-folders-display" class="mt-4">
+    {% if session.get('selected_folders') %}
+    <div class="alert alert-info">
+        <div>
+            <span class="font-bold">Selected:</span>
+            <span id="selected-count">{{ session.get('selected_folders')|length }}</span> folder(s)
+        </div>
+        <button onclick="clearSelection()" class="btn btn-sm btn-ghost">
+            Clear All
+        </button>
+    </div>
+    <div class="mt-2 space-y-1 max-h-32 overflow-y-auto">
+        {% for folder in session.get('selected_folders', []) %}
+        <div class="text-xs bg-base-200 px-2 py-1 rounded flex items-center justify-between">
+            <span class="truncate flex-1">{{ folder }}</span>
+            <button data-remove-path="{{ folder }}"
+                    onclick="removeSelection(this.dataset.removePath)"
+                    class="btn btn-ghost btn-xs ml-2">
+                ✕
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function selectCurrentFolder(path) {
+    fetch('/browse/select', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ path: path, action: 'add' })
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Update count display
+        updateSelectedCount(data.count);
+
+        // Get parent path for reload
+        const currentPath = path;
+        const parentPath = currentPath.substring(0, currentPath.lastIndexOf('\\')) ||
+                          currentPath.substring(0, currentPath.lastIndexOf('/'));
+
+        // Reload the parent view to show the folder is now in selection
+        if (parentPath) {
+            htmx.ajax('GET', `/browse?path=${encodeURIComponent(parentPath)}`, {target: '#file-browser-content'});
+        } else {
+            // If no parent, reload current view
+            htmx.ajax('GET', `/browse?path=${encodeURIComponent(currentPath)}`, {target: '#file-browser-content'});
+        }
+    })
+    .catch(error => {
+        console.error('Failed to select folder:', error);
+        alert(`Failed to select folder: ${error.message}`);
+    });
+}
+
+function toggleAudiobookSelection(element, event) {
+    const path = element.dataset.path;
+    const isSelected = element.classList.contains('selected');
+    const action = isSelected ? 'remove' : 'add';
+
+    fetch('/browse/select', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ path: path, action: action })
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Toggle visual selection
+        if (action === 'add') {
+            element.classList.add('selected');
+        } else {
+            element.classList.remove('selected');
+        }
+
+        // Update count display
+        updateSelectedCount(data.count);
+
+        // Get parent path to reload the selected folders display section
+        const parentPath = path.substring(0, path.lastIndexOf('\\')) ||
+                          path.substring(0, path.lastIndexOf('/'));
+        if (parentPath) {
+            // Reload to update the selected folders display at bottom
+            htmx.ajax('GET', `/browse?path=${encodeURIComponent(parentPath)}`, {target: '#file-browser-content'});
+        }
+    })
+    .catch(error => {
+        console.error('Failed to toggle selection:', error);
+        alert(`Failed to toggle selection: ${error.message}`);
+    });
+}
+
+function navigateIntoAudiobook(event, path) {
+    event.stopPropagation();
+    htmx.ajax('GET', `/browse?path=${encodeURIComponent(path)}`, {target: '#file-browser-content'});
+}
+
+function updateSelectedCount(count) {
+    const countElement = document.getElementById('selected-count');
+    if (countElement) {
+        countElement.textContent = count;
+    }
+
+    // Also update the main form display
+    const mainCountDisplay = document.getElementById('selected-count-display');
+    if (mainCountDisplay) {
+        mainCountDisplay.textContent = `${count} selected`;
+    }
+}
+
+function clearSelection() {
+    fetch('/browse/clear', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(() => {
+        // Update count
+        updateSelectedCount(0);
+
+        // Get current path from breadcrumb and reload to clear visual selections
+        const pathElement = document.querySelector('.breadcrumbs li.font-bold');
+        if (pathElement && pathElement.textContent !== 'Computer') {
+            const currentPath = pathElement.textContent.trim();
+            htmx.ajax('GET', `/browse?path=${encodeURIComponent(currentPath)}`, {target: '#file-browser-content'});
+        } else {
+            // Just reload the drives view
+            htmx.ajax('GET', '/browse/drives', {target: '#file-browser-content'});
+        }
+    })
+    .catch(error => {
+        console.error('Failed to clear selection:', error);
+    });
+}
+
+function removeSelection(path) {
+    fetch('/browse/select', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ path: path, action: 'remove' })
+    })
+    .then(() => {
+        // Find and deselect the item
+        // Escape backslashes for CSS selector (double escape: \\ becomes \\\\)
+        const escapedPath = path.replace(/\\/g, '\\\\');
+        const item = document.querySelector(`.file-item[data-path="${escapedPath}"]`);
+        if (item) {
+            item.classList.remove('selected');
+        }
+
+        // Reload display
+        htmx.ajax('GET', '/browse/selected-display', {target: '#selected-folders-display'});
+    });
+}
+</script>
+{% endif %}

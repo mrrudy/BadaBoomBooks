@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}BadaBoomBooks - Audiobook Organization{% endblock %}
+
+{% block content %}
+<div class="py-4">
+    <!-- Hero Section -->
+    <div class="hero bg-base-100 rounded-lg shadow-xl mb-6">
+        <div class="hero-content text-center py-8">
+            <div class="max-w-3xl">
+                <h1 class="text-4xl font-bold">📚 BadaBoomBooks</h1>
+                <p class="py-4 text-lg">
+                    Organize your audiobook collection with automated metadata scraping,
+                    intelligent folder organization, and parallel processing.
+                </p>
+                <div class="badge badge-primary">Version {{ version }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Grid Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left Column: Section 1 (Scan Planning) -->
+        <div class="lg:col-span-2">
+            {% include 'partials/section1_scan_planning.html' %}
+        </div>
+
+        <!-- Right Column: Section 3 (Task Management) -->
+        <div class="lg:col-span-1 space-y-4">
+            <!-- Current Tasks -->
+            <div id="current-tasks-container"
+                 hx-get="/tasks/current"
+                 hx-trigger="load, every 2s"
+                 hx-swap="innerHTML">
+                <!-- Loaded via HTMX -->
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <h2 class="card-title">Current Tasks</h2>
+                        <div class="text-center py-8 text-base-content/60">
+                            <span class="spinner inline-block"></span>
+                            <p class="mt-2">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Failed Tasks -->
+            <div id="failed-tasks-container"
+                 hx-get="/tasks/failed"
+                 hx-trigger="load, every 5s"
+                 hx-swap="innerHTML">
+                <!-- Loaded via HTMX -->
+            </div>
+
+            <!-- Completed Tasks -->
+            <div id="completed-tasks-container"
+                 hx-get="/tasks/completed"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <!-- Loaded via HTMX -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Tabs (shown only on mobile) -->
+    <div class="lg:hidden mt-6">
+        <div class="tabs tabs-boxed">
+            <a class="tab tab-active" onclick="showSection(1)">Scan Planning</a>
+            <a class="tab" onclick="showSection(3)">Tasks</a>
+        </div>
+    </div>
+</div>
+
+<!-- File Browser Modal -->
+<dialog id="file-browser-modal" class="modal">
+    <div class="modal-box max-w-5xl h-5/6">
+        <h3 class="font-bold text-lg mb-4">Browse & Select Audiobook Folders</h3>
+
+        <div id="file-browser-content"
+             hx-get="/browse/drives"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <!-- File browser content loaded here -->
+            <div class="text-center py-8">
+                <span class="spinner inline-block"></span>
+                <p class="mt-2">Loading drives...</p>
+            </div>
+        </div>
+
+        <div class="modal-action">
+            <button class="btn btn-primary" onclick="document.getElementById('file-browser-modal').close()">
+                Done
+            </button>
+            <button class="btn" onclick="document.getElementById('file-browser-modal').close()">
+                Cancel
+            </button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Mobile section toggling
+function showSection(sectionNum) {
+    // This would toggle visibility of sections on mobile
+    // For now, sections are always visible
+}
+
+// Update selected folders count when modal closes
+document.getElementById('file-browser-modal').addEventListener('close', function() {
+    fetch('/browse/selected')
+        .then(response => response.json())
+        .then(data => {
+            const countDisplay = document.getElementById('selected-count-display');
+            if (countDisplay) {
+                countDisplay.textContent = `${data.count} selected`;
+            }
+
+            // Update folder list display
+            const listContainer = document.getElementById('selected-folders-list');
+            if (listContainer) {
+                if (data.count === 0) {
+                    listContainer.innerHTML = '<div class="text-sm text-base-content/60 mt-2">No folders selected</div>';
+                } else {
+                    let html = '<div class="space-y-1 mt-2 max-h-32 overflow-y-auto">';
+                    data.selected_folders.forEach(folder => {
+                        html += `
+                            <div class="text-xs bg-base-200 px-2 py-1 rounded flex items-center justify-between">
+                                <span class="truncate flex-1">${folder}</span>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    listContainer.innerHTML = html;
+                }
+            }
+        });
+});
+
+// Initialize folder list on page load
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/browse/selected')
+        .then(response => response.json())
+        .then(data => {
+            const countDisplay = document.getElementById('selected-count-display');
+            if (countDisplay) {
+                countDisplay.textContent = `${data.count} selected`;
+            }
+
+            const listContainer = document.getElementById('selected-folders-list');
+            if (listContainer && data.count === 0) {
+                listContainer.innerHTML = '<div class="text-sm text-base-content/60 mt-2">No folders selected</div>';
+            }
+        });
+});
+</script>
+{% endblock %}

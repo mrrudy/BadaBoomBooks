@@ -229,6 +229,7 @@ class ProcessingArgs:
     # === QUEUE SYSTEM ===
     workers: int = 4  # Number of parallel workers
     resume: bool = False  # Resume incomplete job
+    interactive: bool = False  # Enable interactive mode (handle user input tasks)
 
     # === DEBUG ===
     debug: bool = False
@@ -236,23 +237,27 @@ class ProcessingArgs:
     def validate(self) -> List[str]:
         """Validate arguments and return list of errors."""
         errors = []
-        
+
         if self.copy and self.move:
             errors.append("Cannot specify both --copy and --move")
-        
+
         if self.output and not self.output.is_dir():
             errors.append(f"Output path does not exist or is not a directory: {self.output}")
-        
+
         if self.book_root and not self.book_root.is_dir():
             errors.append(f"Book root path does not exist or is not a directory: {self.book_root}")
-        
+
         if self.search_limit < 1:
             errors.append("Search limit must be at least 1")
-            
+
         if self.download_limit < 1:
             errors.append("Download limit must be at least 1")
-            
+
         if self.search_delay < 0:
             errors.append("Search delay cannot be negative")
-        
+
+        # Validate interactive mode vs multiple workers
+        if self.interactive and self.workers > 1:
+            errors.append("Cannot use --interactive with multiple workers (--workers > 1). Interactive mode requires single worker to avoid mixed task prompts.")
+
         return errors
