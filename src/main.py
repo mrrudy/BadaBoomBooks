@@ -291,10 +291,11 @@ class BadaBoomBooksApp:
 
             # Enqueue tasks to Huey
             if interactive_mode:
-                # Interactive mode: Start with just the first task to prevent mixed console output
+                # Interactive mode: Start with just the first PENDING task to prevent mixed console output
                 # The monitoring loop will enqueue more as they complete
-                log.info("Interactive mode: Enqueueing first task only")
-                self.queue_manager.enqueue_first_task(job_id)
+                # Don't enqueue waiting_for_user tasks (they'll be handled after user provides input)
+                log.info("Interactive mode: Enqueueing first pending task only")
+                self.queue_manager.enqueue_first_task(job_id, interactive=False)
             else:
                 # Daemon mode: Enqueue all tasks at once for parallel processing
                 self.queue_manager.enqueue_all_tasks(job_id, interactive=interactive_mode)
@@ -1098,6 +1099,9 @@ class BadaBoomBooksApp:
         # to prevent race conditions where multiple tasks enter waiting_for_user before we detect them
         user_input_check_interval = 0 if interactive_mode else 10
 
+        # Track if we exited early due to waiting_for_user tasks in daemon mode
+        exited_with_waiting_tasks = False
+
         iteration = 0
         while True:
             progress = self.queue_manager.get_job_progress(job_id)
@@ -1124,10 +1128,11 @@ class BadaBoomBooksApp:
                     waiting_count = fresh_progress.get('waiting_for_user', 0)
                     running_count = fresh_progress.get('running', 0)
                     if waiting_count == 0 and running_count == 0:
-                        # All waiting tasks resolved and no running tasks, enqueue next immediately
-                        enqueued = self.queue_manager.enqueue_first_task(job_id)
+                        # All waiting tasks resolved and no running tasks, enqueue next PENDING task immediately
+                        # Don't enqueue waiting_for_user tasks (they'll be handled after user provides input)
+                        enqueued = self.queue_manager.enqueue_first_task(job_id, interactive=False)
                         if enqueued:
-                            log.info("Interactive mode: Enqueued next task after handling user input")
+                            log.info("Interactive mode: Enqueued next pending task after handling user input")
                         last_enqueue_check = iteration  # Reset counter to prevent duplicate enqueue
                 last_user_input_check = iteration
 
@@ -1145,10 +1150,11 @@ class BadaBoomBooksApp:
                         log.debug(f"Skipping enqueue: {running_count} running, {waiting_count} waiting")
                         last_enqueue_check = iteration
                     else:
-                        # No tasks running or waiting, enqueue the next one
-                        enqueued = self.queue_manager.enqueue_first_task(job_id)
+                        # No tasks running or waiting, enqueue the next PENDING task
+                        # Don't enqueue waiting_for_user tasks (they'll be handled after user provides input)
+                        enqueued = self.queue_manager.enqueue_first_task(job_id, interactive=False)
                         if enqueued:
-                            log.info("Interactive mode: Enqueued next task")
+                            log.info("Interactive mode: Enqueued next pending task")
                         last_enqueue_check = iteration
                 else:
                     # Daemon mode: Enqueue all pending tasks for parallel processing
@@ -1175,21 +1181,46 @@ class BadaBoomBooksApp:
                 print()  # Newline after progress
                 break
 
+            # In daemon mode: if no pending/running tasks and only waiting_for_user tasks remain, exit
+            # Daemon workers cannot handle waiting_for_user tasks, so job is stuck
+            if not interactive_mode and pending == 0 and running == 0 and waiting > 0:
+                print()  # Newline after progress
+                print(f"\n⚠️  {waiting} task(s) require user input (use --interactive to handle them)")
+                print("   Daemon mode cannot handle these tasks. Exiting.")
+                exited_with_waiting_tasks = True
+                break
+
             time.sleep(0.3)
 
         # Update job status
-        self.queue_manager.update_job_status(
-            job_id,
-            'completed',
-            completed_at=datetime.now().isoformat(),
-            completed_tasks=completed,
-            failed_tasks=failed,
-            skipped_tasks=skipped
-        )
+        # If exited with waiting_for_user tasks in daemon mode, keep job as 'processing' for resume
+        if exited_with_waiting_tasks:
+            self.queue_manager.update_job_status(
+                job_id,
+                'processing',  # Keep as processing so --resume can pick it up
+                completed_tasks=completed,
+                failed_tasks=failed,
+                skipped_tasks=skipped
+            )
+        else:
+            self.queue_manager.update_job_status(
+                job_id,
+                'completed',
+                completed_at=datetime.now().isoformat(),
+                completed_tasks=completed,
+                failed_tasks=failed,
+                skipped_tasks=skipped
+            )
 
         # Build result summary from database tasks
         self._populate_result_from_database(job_id)
-        print(f"\n✓ Processing completed: {completed} successful, {failed} failed, {skipped} skipped")
+
+        if exited_with_waiting_tasks:
+            print(f"\n⏸  Processing paused: {completed} successful, {failed} failed, {skipped} skipped")
+            print(f"   Run with --resume --workers 1 --interactive to continue")
+            return 0  # Not an error, just paused for user input
+        else:
+            print(f"\n✓ Processing completed: {completed} successful, {failed} failed, {skipped} skipped")
 
         if failed > 0:
             print(f"\n⚠️  {failed} books failed to process:")
@@ -1398,16 +1429,28 @@ class BadaBoomBooksApp:
                for k, v in stored_args_dict.items()}
         )
 
-        # Override workers count if specified in CLI
+        # Override workers count and interactive flag if specified in CLI
         if cli_args.workers != 4:  # 4 is default, so user explicitly set it
             stored_args.workers = cli_args.workers
+
+        # Override interactive flag if explicitly set in CLI
+        # We can detect if it was set by comparing to default (False)
+        if cli_args.interactive:
+            stored_args.interactive = True
 
         # Use stored args for processing (includes original yolo, dry_run, etc.)
         args = stored_args
 
+        # Determine interactive mode early (needed for task counting logic)
+        interactive_mode = args.interactive if args.workers == 1 else False
+
         # Get task statistics
         progress = self.queue_manager.get_job_progress(job_id)
-        print(f"   Tasks: {progress['completed']} completed, {progress['failed']} failed, {progress['running']} running, {progress['pending']} pending")
+        waiting = progress.get('waiting_for_user', 0)
+        status_str = f"   Tasks: {progress['completed']} completed, {progress['failed']} failed, {progress['running']} running, {progress['pending']} pending"
+        if waiting > 0:
+            status_str += f", {waiting} waiting for user"
+        print(status_str)
 
         # Reset any running tasks to pending (workers died)
         cursor = self.queue_manager.connection.cursor()
@@ -1421,9 +1464,14 @@ class BadaBoomBooksApp:
         # Refresh progress after resetting running tasks
         progress = self.queue_manager.get_job_progress(job_id)
         total_pending = progress['pending']
+        total_waiting = progress['waiting_for_user']
 
         # Check if there are any tasks left to process
-        if total_pending == 0:
+        # In interactive mode, we can process both pending and waiting_for_user tasks
+        # In daemon mode, we can only process pending tasks
+        tasks_to_process = total_pending + (total_waiting if interactive_mode else 0)
+
+        if tasks_to_process == 0:
             total = progress['total']
             completed = progress['completed']
             failed = progress['failed']
@@ -1448,9 +1496,6 @@ class BadaBoomBooksApp:
         # Initialize processors
         self._initialize_processors(args)
 
-        # Determine interactive mode (same logic as in _process_all_folders)
-        interactive_mode = args.interactive if args.workers == 1 else False
-
         # CRITICAL: Flush Huey's queue BEFORE starting workers
         # This prevents workers from picking up stale tasks from previous run
         log.info("Flushing Huey queue to clear stale tasks from previous run...")
@@ -1474,17 +1519,11 @@ class BadaBoomBooksApp:
 
         # Re-enqueue pending tasks
         if interactive_mode:
-            # Interactive mode: Check if there are waiting tasks first
-            # Don't enqueue new tasks if there are already tasks waiting for user input
-            progress = self.queue_manager.get_job_progress(job_id)
-            waiting_count = progress.get('waiting_for_user', 0)
-
-            if waiting_count > 0:
-                print(f"\n⏸  Found {waiting_count} task(s) waiting for user input - will handle those first")
-            else:
-                # No waiting tasks, enqueue the first pending task
-                print(f"\n🔄 Re-enqueueing first task (interactive mode - {total_pending} total pending)...")
-                self.queue_manager.enqueue_first_task(job_id)
+            # Interactive mode: Enqueue first PENDING task only
+            # Do NOT enqueue waiting_for_user tasks here - they will be enqueued AFTER user provides input
+            # This prevents duplicate searches when resuming (task would be enqueued with url=None, triggering search again)
+            print(f"\n🔄 Re-enqueueing first pending task (interactive mode - {total_pending} pending, {total_waiting} waiting)...")
+            self.queue_manager.enqueue_first_task(job_id, interactive=False)  # interactive=False to skip waiting_for_user
         else:
             # Daemon mode: Enqueue all tasks at once for parallel processing
             print(f"\n🔄 Re-enqueueing {total_pending} pending tasks...")

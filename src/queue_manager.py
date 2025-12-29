@@ -417,21 +417,22 @@ class QueueManager:
 
         return [dict(row) for row in cursor.fetchall()]
 
-    def enqueue_first_task(self, job_id: str) -> bool:
+    def enqueue_first_task(self, job_id: str, interactive: bool = False) -> bool:
         """
         Enqueue only the first pending task for a job to Huey.
         Used in interactive mode to process tasks one at a time.
 
         Args:
             job_id: Job ID to enqueue task for
+            interactive: If True, include 'waiting_for_user' tasks. If False, only 'pending' tasks.
 
         Returns:
             True if a task was enqueued, False if no tasks available
         """
         # Get only one task that hasn't been enqueued yet
-        # CRITICAL: Use interactive=False to exclude 'waiting_for_user' tasks
-        # We only want to enqueue genuinely pending tasks, not tasks waiting for user input
-        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True, interactive=False)
+        # In interactive mode, include waiting_for_user tasks
+        # In daemon mode, only include pending tasks
+        tasks = self.get_pending_tasks(job_id, only_not_enqueued=True, interactive=interactive)
 
         if not tasks:
             log.debug(f"No new tasks to enqueue for job {job_id[:8]}")
@@ -893,25 +894,6 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
 
         # Use auto-search or manual search
         if args.auto_search:
-            # Check if we're in daemon mode (non-interactive) and not YOLO
-            # In daemon mode without YOLO, we should mark tasks requiring user input as waiting
-            if not args.interactive and not args.yolo and task_id:
-                from .queue_manager import QueueManager
-                queue_mgr = QueueManager()
-
-                # Mark task as waiting for user input
-                queue_mgr.set_task_waiting_for_user(
-                    task_id=task_id,
-                    input_type='auto_search_selection',
-                    prompt='Auto-search requires user selection (daemon mode - skipped)',
-                    options=[],
-                    context={'folder': str(folder_path), 'mode': 'daemon', 'reason': 'interactive_mode_disabled'}
-                )
-                queue_mgr.close()
-
-                log.info(f"Daemon mode: Marking {folder_path.name} as waiting_for_user (auto-search requires interaction)")
-                return None  # Skip for now, will be picked up by interactive worker later
-
             # Extract book info for context
             book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
 
