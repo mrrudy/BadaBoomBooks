@@ -309,12 +309,21 @@ CANDIDATES TO EVALUATE:
 SCORING CRITERIA (in order of importance):
 
 1. PERFECT MATCH (0.9-1.0):
-   - Title matches (ignoring narrator names, bitrate info like "192kbps", "czyta X", "narrated by")
-   - Author name matches (allow 1-2 character differences due to typos/diacritics)
-     * Examples: "Čapek"="Capek", "José"="Jose", "Müller"="Muller", "Dostoyevsky"="Dostoevsky"
-     * One letter difference in first/last name is acceptable (typo tolerance)
+   - **Title exactly matches** (ignoring narrator names, bitrate info like "192kbps", "czyta X", "narrated by")
+     * "Tron dla faworyta" in query = "Tron dla faworyta" in candidate title → MATCH
+   - **Author name contains same components** (ORDER IRRELEVANT):
+     * "Stempniewicz Czesław" = "Czesław Stempniewicz" → PERFECT MATCH
+     * Name variations allowed:
+       - Name order: "Surname Firstname" = "Firstname Surname" (both valid)
+       - Diacritics: "Čapek"="Capek", "José"="Jose", "Müller"="Muller"
+       - Typos: One letter difference in first/last name is acceptable
+     * CRITICAL: If same first+last name words appear → PERFECT MATCH regardless of order
+     * Examples that should score 1.0:
+       - "Karel Čapek" vs "Čapek Karel" → 1.0
+       - "Stempniewicz Czesław" vs "Czesław Stempniewicz" → 1.0
+       - "Capek Karel" vs "Karel Capek" → 1.0
    - Same language edition
-   - Same narrator if specified in folder name (optional)
+   - Same narrator if specified in folder name (optional - ignore for scoring)
    - CRITICAL: Must be the EXACT book, not just same series
 
 2. VERY GOOD MATCH (0.7-0.9):
@@ -345,6 +354,19 @@ IMPORTANT PARSING RULES FOR FOLDER NAMES:
   → Author: "Karel Capek"
   → Narrator: "A. Ziajkiewicz" (IGNORE for matching)
   → Bitrate: "192kbps" (IGNORE for matching)
+
+AUTHOR NAME MATCHING RULES (CRITICAL):
+- **NAME ORDER DOES NOT MATTER**: "Stempniewicz Czesław" = "Czesław Stempniewicz"
+  * Polish/Czech/Slavic names: "Surname Firstname" (LastName FirstName) format is common
+  * Western format: "Firstname Surname" (FirstName LastName)
+  * BOTH ARE VALID - if same name components appear, it's a MATCH regardless of order
+  * Examples of PERFECT matches:
+    - "Stempniewicz Czesław" vs "Czesław Stempniewicz" → SCORE 1.0
+    - "Capek Karel" vs "Karel Capek" → SCORE 1.0
+    - "Rowling J.K." vs "J.K. Rowling" → SCORE 1.0
+- **MATCHING ALGORITHM**: Extract all name components (first name, last name), compare as sets
+  * If all components match (ignoring order) → PERFECT MATCH (1.0)
+  * If diacritics differ but same components → PERFECT MATCH (1.0)
 
 DIACRITICS AND CHARACTER EQUIVALENCE:
 - Treat diacritics and accented characters as equivalent to their base characters:

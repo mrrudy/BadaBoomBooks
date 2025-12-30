@@ -38,7 +38,10 @@
       "Bash(Select-String -Pattern \"LLM|prompt|API|score|Capek|Fabryka\" -Context 2,2)",
       "Bash(python BadaBoomBooks.py:*)",
       "Bash(python test_search_cleaning.py:*)",
-      "Bash(Select-String -Pattern \"Searching|Identified|alternatives\")"
+      "Bash(Select-String -Pattern \"Searching|Identified|alternatives\")",
+      "Bash(Select-String -Pattern \"LLM|prompt|candidate|score\" -Context 2,2)",
+      "Bash(tee:*)",
+      "Bash(python test_llm_prompt.py:*)"
     ]
   }
 }
