@@ -34,7 +34,9 @@
       "Bash(timeout 60 python:*)",
       "Bash(timeout 30 python:*)",
       "Bash(cat:*)",
-      "Bash(python -m pytest src/tests/test_file_operations.py -v)"
+      "Bash(python -m pytest src/tests/test_file_operations.py -v)",
+      "Bash(Select-String -Pattern \"LLM|prompt|API|score|Capek|Fabryka\" -Context 2,2)",
+      "Bash(python BadaBoomBooks.py:*)"
     ]
   }
 }

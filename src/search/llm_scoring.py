@@ -308,36 +308,90 @@ CANDIDATES TO EVALUATE:
 
 SCORING CRITERIA (in order of importance):
 
-1. PERFECT MATCH (1.0):
-   - EXACT title match (same language, same edition)
-   - Same author
-   - Same narrator (if known)
+1. PERFECT MATCH (0.9-1.0):
+   - Title matches (ignoring narrator names, bitrate info like "192kbps", "czyta X", "narrated by")
+   - Author name matches (allow 1-2 character differences due to typos/diacritics)
+     * Examples: "Čapek"="Capek", "José"="Jose", "Müller"="Muller", "Dostoyevsky"="Dostoevsky"
+     * One letter difference in first/last name is acceptable (typo tolerance)
+   - Same language edition
+   - Same narrator if specified in folder name (optional)
    - CRITICAL: Must be the EXACT book, not just same series
 
 2. VERY GOOD MATCH (0.7-0.9):
    - Very similar title (minor differences in subtitle or edition)
-   - Same author
+   - Same author (with or without diacritics)
    - Language matches
+   - Narrator may differ or be unspecified
 
-3. POSSIBLE MATCH (0.4-0.6):
+3. POSSIBLE MATCH (0.5-0.6):
    - Similar title but uncertain
    - Same author but different edition or format
+   - May be same series but different volume
 
-4. POOR MATCH (0.0-0.3):
-   - Wrong book from same series (this is NOT good enough!)
-   - Wrong language
+4. POOR MATCH (0.0-0.4):
+   - Wrong book from same series (different volume number)
+   - Wrong language edition
    - Different book by same author
    - Completely unrelated
 
-IMPORTANT RULES:
-- When ID3 tags are marked as garbage (⚠ WARNING), IGNORE them and use folder name instead
-- Folder name is generally more reliable than corrupted ID3 tags
-- Being "part of the same series" is NOT a match if it's a different volume
+IMPORTANT PARSING RULES FOR FOLDER NAMES:
+- Folder names often contain EXTRA INFO not in the book title:
+  * Narrator: "czyta X" (Polish), "narrated by X" (English), "read by X"
+  * Bitrate: "192kbps", "128kbps", "64kbps"
+  * Format info: "mp3", "m4b", "audiobook"
+- IGNORE these extra details when matching title
+- Example: "Capek Karel - Fabryka absolutu czyta A. Ziajkiewicz 192kbps"
+  → Core title: "Fabryka absolutu"
+  → Author: "Karel Capek"
+  → Narrator: "A. Ziajkiewicz" (IGNORE for matching)
+  → Bitrate: "192kbps" (IGNORE for matching)
+
+DIACRITICS AND CHARACTER EQUIVALENCE:
+- Treat diacritics and accented characters as equivalent to their base characters:
+  * Latin Extended: č/c, ć/c, ę/e, ą/a, ł/l, ó/o, ń/n, ś/s, ź/z, ż/z
+  * French: é/e, è/e, ê/e, ç/c, à/a, ù/u, û/u
+  * German: ä/a, ö/o, ü/u, ß/ss
+  * Spanish: ñ/n, á/a, é/e, í/i, ó/o, ú/u
+  * Nordic: å/a, ø/o, æ/ae
+  * And all other language-specific diacritics
+- Examples:
+  * "Karel Čapek" (Czech) = "Karel Capek" (romanized)
+  * "José García" = "Jose Garcia"
+  * "François" = "Francois"
+- Case differences are NOT significant: "Fabryka Absolutu" = "fabryka absolutu"
+
+LANGUAGE MATCHING:
 - Same language is a strong positive indicator
-- Exact title match in the correct language is the best indicator
+- Different romanization/transliteration of same language content is acceptable
+- If folder and candidate use same alphabet/script (Cyrillic, Latin, etc) → likely GOOD match
+- If folder is one language but candidate is clearly different language → POOR match (different edition)
+- Examples of GOOD matches despite character differences:
+  * "Müller" (German) = "Muller" (romanized)
+  * "Dostoyevsky" (English) = "Достоевский" (Cyrillic original) = "Dostoievski" (alternate romanization)
+
+IMPORTANT RULES FOR CONFLICTING METADATA:
+- **When ID3 tags conflict with folder name, consider BOTH sources:**
+  * Folder name is often more reliable (manually organized)
+  * ID3 "Album/Series" field may contain the ACTUAL book title
+  * ID3 "Title" field may contain track info like "1. I", "Chapter 1", "Part 1"
+  * Strip common prefixes from ID3 titles: "Author:", "Title:", labels, etc.
+- **Example of misleading ID3 tags:**
+  * Folder: "Slaughter Karin - Moje sliczne czyta Filip Kosior 224kbps"
+  * ID3 Title: "1. I" (track/chapter number - IGNORE)
+  * ID3 Album/Series: "Moje śliczne" (actual book title - USE THIS!)
+  * Candidate: "Moje śliczne by Karin Slaughter"
+  * → This IS a match! Use Album/Series field as the real title.
+- **Matching strategy:**
+  1. If folder name clearly contains book title → trust folder name
+  2. If ID3 Title looks like track info ("1.", "Chapter", "Part") → check Album/Series field
+  3. If Album/Series matches candidate → HIGH score (folder+series agreement)
+  4. Compare ALL available clues (folder, ID3 title, series, author) against candidates
+- When ID3 tags are explicitly marked as garbage (⚠ WARNING), IGNORE them completely
+- Being "part of the same series" is NOT a match if it's a different volume number
 - It is COMPLETELY ACCEPTABLE to score all candidates as 0.0 if none match
-- When in doubt, score LOW - false negatives are better than false positives
-- If the candidates are about completely different topics/genres than what we're looking for, score them 0.0
+- Focus on CORE book title and author, ignore technical metadata (narrator, bitrate)
+- When in doubt about narrator/bitrate differences, score HIGH if title+author match
+- Only score LOW if the actual book content is different (wrong volume, wrong language, wrong book)
 
 RESPONSE FORMAT:
 Return ONLY the scores for each candidate, one per line:
