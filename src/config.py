@@ -101,6 +101,49 @@ def load_llm_config():
 
 LLM_CONFIG = load_llm_config()
 
+# === LLM SCORING THRESHOLDS ===
+# All threshold values for LLM-based candidate selection
+# These control automated vs manual decision-making
+LLM_SCORING_THRESHOLDS = {
+    # === Primary Acceptance Thresholds ===
+    # Applied to RAW LLM scores (before weight application)
+    'llm_acceptance_threshold': 0.5,          # Minimum LLM score to accept candidate (manual mode)
+                                               # Below this: show "skip" as default choice
+                                               # Above this: show candidate as default choice
+
+    # Applied to FINAL WEIGHTED scores (after weight application)
+    'yolo_auto_accept_threshold': 0.95,       # Minimum final score for YOLO auto-accept
+                                               # In YOLO mode: only auto-select if final_score >= 0.95
+                                               # Otherwise: auto-skip (too risky for automated processing)
+
+    # === Weight Application Thresholds ===
+    'weight_min_score_threshold': 0.65,       # Minimum LLM score to apply scraper weights
+                                               # Prevents boosting low-quality matches
+                                               # Below this: final_score = llm_score (no boost)
+
+    'weight_similarity_bracket': 0.1,         # Quality bracket for weight tiebreaker (±0.1)
+                                               # Only apply weights to candidates within this bracket
+                                               # of best score (avoids boosting clear losers)
+
+    'weight_boost_factor': 0.1,               # Multiplier in weight formula:
+                                               # final_score = llm_score * (1.0 + (weight - 1.0) * factor)
+                                               # Max boost: ~0.2 for LubimyCzytac (weight=3.0)
+
+    # === LLM API Parameters ===
+    'single_score_temperature': 0.1,          # Temperature for single candidate scoring
+                                               # Low value for consistent results
+
+    'batch_score_temperature': 0.3,           # Temperature for batch candidate scoring
+                                               # Higher value allows better reasoning/comparison
+}
+
+# Convenience accessors (for backward compatibility and cleaner imports)
+LLM_ACCEPTANCE_THRESHOLD = LLM_SCORING_THRESHOLDS['llm_acceptance_threshold']
+YOLO_AUTO_ACCEPT_THRESHOLD = LLM_SCORING_THRESHOLDS['yolo_auto_accept_threshold']
+WEIGHT_MIN_SCORE_THRESHOLD = LLM_SCORING_THRESHOLDS['weight_min_score_threshold']
+WEIGHT_SIMILARITY_BRACKET = LLM_SCORING_THRESHOLDS['weight_similarity_bracket']
+WEIGHT_BOOST_FACTOR = LLM_SCORING_THRESHOLDS['weight_boost_factor']
+
 # === LOGGING CONFIGURATION ===
 def setup_logging(debug_enabled: bool = False):
     """Setup logging configuration based on debug flag."""

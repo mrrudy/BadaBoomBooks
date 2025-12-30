@@ -9,6 +9,13 @@ import logging as log
 from typing import List, Optional
 
 from ..models import SearchCandidate
+from ..config import (
+    SCRAPER_REGISTRY,
+    LLM_ACCEPTANCE_THRESHOLD,
+    WEIGHT_MIN_SCORE_THRESHOLD,
+    WEIGHT_SIMILARITY_BRACKET,
+    WEIGHT_BOOST_FACTOR
+)
 
 
 class CandidateSelector:
@@ -100,11 +107,9 @@ class CandidateSelector:
         # Get best candidate
         best_candidate, llm_score, final_score = scored_with_weights[0]
 
-        # Define acceptance threshold (0.5 = 50% confidence minimum)
-        ACCEPTANCE_THRESHOLD = 0.5
-
-        if llm_score < ACCEPTANCE_THRESHOLD:
-            log.info(f"Best LLM score ({llm_score:.2f}) below threshold ({ACCEPTANCE_THRESHOLD}), rejecting all")
+        # Use centralized threshold from config
+        if llm_score < LLM_ACCEPTANCE_THRESHOLD:
+            log.info(f"Best LLM score ({llm_score:.2f}) below threshold ({LLM_ACCEPTANCE_THRESHOLD}), rejecting all")
             # Set flag to indicate LLM actively rejected all candidates
             self.llm_rejected_all = True
             return None
@@ -125,32 +130,26 @@ class CandidateSelector:
         Returns:
             List of (candidate, llm_score, final_score) tuples
         """
-        from ..config import SCRAPER_REGISTRY
-
-        # Quality bracket threshold - scores within this range are considered "similar"
-        SIMILARITY_THRESHOLD = 0.1
-        # Minimum score threshold - don't apply weights if all scores are too low
-        ACCEPTANCE_THRESHOLD = 0.65
-
+        # Use centralized thresholds from config
         if not scored_candidates:
             return []
 
         # Get the best LLM score
         best_llm_score = max(score for _, score in scored_candidates)
 
-        # Don't apply weights if best score is below acceptance threshold
+        # Don't apply weights if best score is below minimum threshold
         # This prevents selecting a candidate when all scores are 0.0 or very low
-        should_apply_weights = best_llm_score >= ACCEPTANCE_THRESHOLD
+        should_apply_weights = best_llm_score >= WEIGHT_MIN_SCORE_THRESHOLD
 
         weighted_results = []
         for candidate, llm_score in scored_candidates:
             # Get weight for this scraper (default to 1.0 if not specified)
             weight = SCRAPER_REGISTRY.get(candidate.site_key, {}).get('weight', 1.0)
 
-            # If score is within similarity threshold of best AND above acceptance threshold, apply weight
-            if should_apply_weights and (best_llm_score - llm_score <= SIMILARITY_THRESHOLD):
+            # If score is within similarity threshold of best AND above minimum threshold, apply weight
+            if should_apply_weights and (best_llm_score - llm_score <= WEIGHT_SIMILARITY_BRACKET):
                 # Apply weight as multiplier (small boost to preserve LLM score primacy)
-                final_score = llm_score * (1.0 + (weight - 1.0) * 0.1)
+                final_score = llm_score * (1.0 + (weight - 1.0) * WEIGHT_BOOST_FACTOR)
                 log.debug(f"Applied weight {weight} to '{candidate.site_key}': "
                          f"LLM={llm_score:.3f} -> Final={final_score:.3f}")
             else:

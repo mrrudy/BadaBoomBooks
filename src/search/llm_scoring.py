@@ -10,7 +10,7 @@ import logging as log
 from typing import List, Tuple, Optional, Dict
 
 from ..models import SearchCandidate
-from ..config import LLM_CONFIG
+from ..config import LLM_CONFIG, LLM_SCORING_THRESHOLDS
 
 
 class LLMScorer:
@@ -87,7 +87,7 @@ class LLMScorer:
                 model=LLM_CONFIG['model'],
                 api_key=LLM_CONFIG['api_key'],
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,  # Higher temperature for reasoning and comparison
+                temperature=LLM_SCORING_THRESHOLDS['batch_score_temperature'],
                 max_tokens=LLM_CONFIG.get('max_tokens', 4096)
             )
 
@@ -134,7 +134,7 @@ class LLMScorer:
                 model=LLM_CONFIG['model'],
                 api_key=LLM_CONFIG['api_key'],
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,  # Low temperature for consistent scoring
+                temperature=LLM_SCORING_THRESHOLDS['single_score_temperature'],
                 max_tokens=LLM_CONFIG.get('max_tokens', 4096)  # Configurable, default 4096
             )
 

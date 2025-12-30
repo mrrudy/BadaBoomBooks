@@ -17,8 +17,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-from ..config import get_chrome_options, initialize_chrome_driver
-from ..config import SCRAPER_REGISTRY, DEFAULT_SEARCH_WAIT_TIMEOUT
+from ..config import (
+    get_chrome_options,
+    initialize_chrome_driver,
+    SCRAPER_REGISTRY,
+    DEFAULT_SEARCH_WAIT_TIMEOUT,
+    LLM_ACCEPTANCE_THRESHOLD,
+    YOLO_AUTO_ACCEPT_THRESHOLD
+)
 from ..models import SearchCandidate
 from ..utils import wait_with_backoff
 
@@ -33,6 +39,17 @@ class AutoSearchEngine:
         self.yolo = yolo
         self.task_id = task_id  # Optional task ID for queue tracking
         self.in_worker_context = in_worker_context  # True when running in background worker thread
+
+        # Warn about dangerous YOLO mode without LLM
+        if yolo and not enable_ai_selection:
+            warning_msg = (
+                "\n"
+                "⚠️  WARNING: Using --yolo without --llm-select is DISCOURAGED!\n"
+                "   This will auto-select the FIRST search result without any quality validation.\n"
+                "   High risk of incorrect metadata. Consider adding --llm-select for safer automation.\n"
+            )
+            print(warning_msg)
+            log.warning("YOLO mode enabled without LLM selection - will blindly auto-select first result")
 
         if debug_enabled:
             from ..config import root_path
@@ -401,38 +418,48 @@ class AutoSearchEngine:
 
             # Determine default based on best score
             best_candidate, best_llm_score, best_final_score = scored_candidates[0]
-            ACCEPTANCE_THRESHOLD = 0.5
 
-            if best_llm_score >= ACCEPTANCE_THRESHOLD:
+            if best_llm_score >= LLM_ACCEPTANCE_THRESHOLD:
                 default_choice = 1  # Best candidate
             else:
                 default_choice = 0  # Skip - no high-confidence match
-                print(safe_encode_text("\n⚠️  No high-confidence matches found (all scores < 0.5)\n"))
+                print(safe_encode_text(f"\n⚠️  No high-confidence matches found (all LLM scores < {LLM_ACCEPTANCE_THRESHOLD})\n"))
         else:
             # No LLM scoring available - use original order, no default
             display_candidates = [(c, None, None) for c in candidates]
             default_choice = None
 
-        # Step 4: Handle YOLO mode (auto-accept default without prompt)
+        # Step 4: Handle YOLO mode (NEW two-tier auto-accept logic)
         if self.yolo:
-            if default_choice == 0:
-                print("🚀 YOLO mode: Auto-skipping (no high-confidence match)")
-                log.debug(f"YOLO mode: Auto-skipped - all scores < 0.5")
-                return None, None, None
-            elif default_choice == 1:
-                # Auto-select best scored candidate
-                selected_candidate = display_candidates[0][0]  # Get candidate from tuple
-                print(f"🚀 YOLO mode: Auto-selecting [{selected_candidate.site_key}] {selected_candidate.title}")
-                if scored_candidates:
-                    _, llm_score, final_score = display_candidates[0]
-                    print(f"   Score: {llm_score:.2f} (weighted: {final_score:.2f})")
-                log.debug(f"YOLO mode: Auto-selected best candidate: {selected_candidate.url}")
-                return selected_candidate.site_key, selected_candidate.url, selected_candidate.html
+            if scored_candidates:
+                # LLM scoring available - use two-tier threshold system
+                best_candidate, best_llm_score, best_final_score = scored_candidates[0]
+
+                if best_final_score >= YOLO_AUTO_ACCEPT_THRESHOLD:
+                    # HIGH CONFIDENCE: Auto-select without prompt
+                    selected_candidate = display_candidates[0][0]
+                    print(f"🚀 YOLO mode: Auto-selecting [{selected_candidate.site_key}] {selected_candidate.title}")
+                    print(f"   Score: {best_llm_score:.2f} (weighted: {best_final_score:.2f}) - EXCELLENT MATCH")
+                    log.debug(f"YOLO: Auto-accepted (final_score={best_final_score:.3f} >= {YOLO_AUTO_ACCEPT_THRESHOLD})")
+                    return selected_candidate.site_key, selected_candidate.url, selected_candidate.html
+                else:
+                    # INSUFFICIENT CONFIDENCE: Auto-skip
+                    print(f"🚀 YOLO mode: Auto-skipping (insufficient confidence)")
+                    print(f"   Best score: {best_llm_score:.2f} (weighted: {best_final_score:.2f})")
+                    print(f"   Required for auto-accept: {YOLO_AUTO_ACCEPT_THRESHOLD}")
+
+                    if best_llm_score >= LLM_ACCEPTANCE_THRESHOLD:
+                        log.debug(f"YOLO: Skipped - final_score {best_final_score:.3f} < {YOLO_AUTO_ACCEPT_THRESHOLD} "
+                                 f"(LLM score {best_llm_score:.3f} was acceptable for manual mode)")
+                    else:
+                        log.debug(f"YOLO: Skipped - LLM score {best_llm_score:.3f} < {LLM_ACCEPTANCE_THRESHOLD}")
+
+                    return None, None, None
             else:
-                # No default, fall back to first candidate
+                # No LLM, fall back to first candidate (dangerous!)
                 selected_candidate = candidates[0]
-                print(f"🚀 YOLO mode: Auto-selecting first candidate [{selected_candidate.site_key}]")
-                log.debug(f"YOLO mode: Auto-selected first candidate (no LLM): {selected_candidate.url}")
+                print(f"⚠️  YOLO mode: Auto-selecting first candidate [{selected_candidate.site_key}] (NO QUALITY CHECK)")
+                log.warning(f"YOLO: Auto-selected first candidate without LLM validation: {selected_candidate.url}")
                 return selected_candidate.site_key, selected_candidate.url, selected_candidate.html
 
         # Step 5: Display candidates with scores

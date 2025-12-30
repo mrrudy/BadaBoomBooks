@@ -7,14 +7,16 @@
     "media tie in",
     "mine",
     "ebooks",
+    "ebook",    
+    "audiobook",
+    "audio",
     "itd.)"
   ],
   "adult": [],
   "americas": [],
   "art": [
     "art & literature"
-  ],
-  "audiobook": [],
+  ], 
   "biography": [
     "biographical",
     "memoir",
@@ -67,7 +69,6 @@
     "literature & fiction",
     "contemporary"
   ],
-  "france": [],
   "history": [
     "historical",
     "historia",
@@ -89,7 +90,11 @@
     "satire"
   ],
   "international": [],
-  "komiksy": [],
+  "comics": [
+    "graphic novels",
+    "manga",
+    "komiksy"
+  ],
   "lgbt": [],
   "mystery": [
     "thriller",
@@ -116,7 +121,11 @@
     "china"
   ],
   "nat. czech": [],
-  "nat. france": [],
+  "nat. france": [
+    "french literature",
+    "francja",
+    "france"
+  ],
   "nat. german": [
     "german literature"
   ],
