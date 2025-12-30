@@ -310,25 +310,42 @@ class CLIHandler:
     def discover_folders_from_book_root(self, book_root: Path) -> List[Path]:
         """
         Discover audiobook folders from book root directory.
-        
+
         Args:
             book_root: Root directory to search
-            
+
         Returns:
             List of discovered audiobook folders
         """
         if not book_root.is_dir():
             return []
-        
+
         from ..config import AUDIO_EXTENSIONS
-        
+        import logging as log
+
+        # Check if book_root itself contains audio files (misuse detection)
+        audio_in_root = False
+        for file_path in book_root.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() in AUDIO_EXTENSIONS:
+                audio_in_root = True
+                break
+
         # Find all folders that contain audio files
         audiobook_folders = set()
-        
+
         for file_path in book_root.rglob('*'):
             if file_path.is_file() and file_path.suffix.lower() in AUDIO_EXTENSIONS:
                 audiobook_folders.add(file_path.parent.resolve())
-        
+
+        # Warn if -R points to a single audiobook folder instead of parent directory
+        if audio_in_root and len(audiobook_folders) == 1 and book_root.resolve() in audiobook_folders:
+            print(f"\n⚠️  WARNING: -R flag points to an audiobook folder, not a parent directory")
+            print(f"   Current: -R '{book_root}'")
+            print(f"   Expected: -R '{book_root.parent}' (to discover author from parent folder)")
+            print(f"   Or use: '{book_root}' (direct folder argument, without -R flag)")
+            print(f"   \n   Author extraction from parent directory will NOT work with current usage.\n")
+            log.warning(f"-R flag points to single audiobook folder {book_root.name}, author extraction from parent will fail")
+
         return sorted(audiobook_folders)
     
     def print_banner(self):

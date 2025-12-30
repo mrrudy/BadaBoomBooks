@@ -877,8 +877,9 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
                 log.info(f"Using existing OPF for {folder_path.name}")
                 return 'OPF'
 
-        # If force_refresh is set, treat OPF as search source
-        if args.force_refresh:
+        # If force_refresh AND from_opf are BOTH set, use OPF's source URL for re-scraping
+        # If only force_refresh (without from_opf), ignore OPF and perform fresh search
+        if args.force_refresh and args.from_opf:
             opf_file = find_metadata_opf(folder_path)
             if opf_file:
                 # Read OPF to get title/author/source for searching
@@ -895,7 +896,7 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
         # Use auto-search or manual search
         if args.auto_search:
             # Extract book info for context
-            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
+            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root, args)
 
             # Generate search term(s) - parallel alternatives if no OPF
             from .utils.metadata_cleaning import generate_search_alternatives
@@ -980,7 +981,7 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
                 log.info(f"Daemon mode: Marking {folder_path.name} as waiting_for_user (manual search requires interaction)")
                 return None  # Skip for now, will be picked up by interactive worker later
 
-            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root)
+            book_info = _extract_book_info_for_discovery(folder_path, metadata_processor, log, args.book_root, args)
             manual_search = ManualSearchHandler(task_id=task_id)
             site_key, url = manual_search.handle_manual_search_with_context(folder_path, book_info, args.site)
 
@@ -994,7 +995,7 @@ def _discover_url_for_folder(folder_path: Path, args: ProcessingArgs,
         return None
 
 
-def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log, book_root: Optional[Path] = None) -> dict:
+def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log, book_root: Optional[Path] = None, args: Optional[ProcessingArgs] = None) -> dict:
     """
     Extract book information for URL discovery context.
 
@@ -1006,6 +1007,7 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log,
         log: Logger instance
         book_root: If provided (when using -R flag), will attempt to extract
                   author from parent directory when no author is found in metadata
+        args: Optional ProcessingArgs to check force_refresh/from_opf flags
 
     Returns:
         Dictionary with book info (folder_name, title, author, source)
@@ -1021,29 +1023,37 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log,
     }
 
     try:
-        # Try to read existing OPF file first
+        # Check if we should read OPF file
+        # Skip OPF if force_refresh is set WITHOUT from_opf (user wants fresh search)
+        should_read_opf = True
+        if args and args.force_refresh and not args.from_opf:
+            should_read_opf = False
+            log.debug(f"Ignoring OPF for {folder_path.name} (force_refresh without from_opf)")
+
+        # Try to read existing OPF file first (if allowed)
         # OPF is trusted completely - if it exists, use it exclusively
-        opf_file = find_metadata_opf(folder_path)
-        if opf_file:
-            try:
-                tree = ET.parse(opf_file)
-                root = tree.getroot()
-                ns = {'dc': 'http://purl.org/dc/elements/1.1/'}
+        if should_read_opf:
+            opf_file = find_metadata_opf(folder_path)
+            if opf_file:
+                try:
+                    tree = ET.parse(opf_file)
+                    root = tree.getroot()
+                    ns = {'dc': 'http://purl.org/dc/elements/1.1/'}
 
-                title_elem = root.find('.//dc:title', ns)
-                if title_elem is not None and title_elem.text:
-                    book_info['title'] = title_elem.text
+                    title_elem = root.find('.//dc:title', ns)
+                    if title_elem is not None and title_elem.text:
+                        book_info['title'] = title_elem.text
 
-                author_elem = root.find('.//dc:creator', ns)
-                if author_elem is not None and author_elem.text:
-                    book_info['author'] = author_elem.text
+                    author_elem = root.find('.//dc:creator', ns)
+                    if author_elem is not None and author_elem.text:
+                        book_info['author'] = author_elem.text
 
-                book_info['source'] = 'existing OPF file'
-                book_info['opf_exists'] = True
-                # OPF data is trusted - return immediately
-                return book_info
-            except Exception as e:
-                log.debug(f"Error reading OPF for {folder_path.name}: {e}")
+                    book_info['source'] = 'existing OPF file'
+                    book_info['opf_exists'] = True
+                    # OPF data is trusted - return immediately
+                    return book_info
+                except Exception as e:
+                    log.debug(f"Error reading OPF for {folder_path.name}: {e}")
 
         # No OPF - extract from both ID3 and folder name as equal sources
         book_info['opf_exists'] = False
@@ -1109,6 +1119,11 @@ def _extract_book_info_for_discovery(folder_path: Path, metadata_processor, log,
                 parent_dir = folder_path.parent
 
                 # Resolve both paths to handle UNC vs drive letter issues
+                # Convert book_root to Path if it's a string (from JSON deserialization)
+                if isinstance(book_root, str):
+                    from pathlib import Path as PathType
+                    book_root = PathType(book_root)
+
                 parent_resolved = parent_dir.resolve()
                 root_resolved = book_root.resolve()
 

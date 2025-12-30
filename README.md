@@ -78,8 +78,12 @@ See [`MODULAR_ARCHITECTURE.md`](MODULAR_ARCHITECTURE.md) for detailed documentat
 
 #### Input/Output Options
 - `folders` - Audiobook folder(s) to process
-- `-O, --output` - Output directory for organized books  
-- `-R, --book-root` - Process all audiobook folders in directory
+- `-O, --output` - Output directory for organized books
+- `-R, --book-root` - Recursively discover audiobook folders from this directory
+  - **Important**: Point `-R` to the **parent directory** containing author folders, not individual book folders
+  - When metadata lacks author info, extracts author name from parent directory
+  - Example: `-R "T:\Library\Authors"` discovers `T:\Library\Authors\Author Name\Book Title\`
+  - **Incorrect usage**: `-R "T:\Library\Authors\Author Name\Book Title"` (use direct folder argument instead)
 
 #### Operation Modes
 - `-c, --copy` - Copy folders (preserve originals)

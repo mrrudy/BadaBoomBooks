@@ -327,8 +327,9 @@ class BadaBoomBooksApp:
                     log.info(f"Using existing OPF for {folder.name}")
                     return 'OPF'
 
-            # If force_refresh is set, treat OPF as search source
-            if args.force_refresh:
+            # If force_refresh AND from_opf are BOTH set, use OPF's source URL for re-scraping
+            # If only force_refresh (without from_opf), ignore OPF and perform fresh search
+            if args.force_refresh and args.from_opf:
                 opf_file = find_metadata_opf(folder)
                 if opf_file:
                     # Read OPF to get title/author/source for searching
@@ -347,7 +348,7 @@ class BadaBoomBooksApp:
                 from .utils import generate_search_term
 
                 # Extract current book information for context
-                book_info = self._extract_book_info(folder, args.book_root)
+                book_info = self._extract_book_info(folder, args.book_root, args)
 
                 # Generate search term
                 if book_info.get('title') and book_info.get('author'):
@@ -379,7 +380,7 @@ class BadaBoomBooksApp:
 
             else:
                 # Manual search
-                book_info = self._extract_book_info(folder, args.book_root)
+                book_info = self._extract_book_info(folder, args.book_root, args)
                 site_key, url = self.manual_search.handle_manual_search_with_context(folder, book_info, args.site)
 
                 if site_key and url:
@@ -407,8 +408,9 @@ class BadaBoomBooksApp:
                         self.progress.finish_book(True)
                         continue
 
-                # If force_refresh is set, treat OPF as search source
-                if args.force_refresh:
+                # If force_refresh AND from_opf are BOTH set, use OPF's source URL for re-scraping
+                # If only force_refresh (without from_opf), ignore OPF and perform fresh search
+                if args.force_refresh and args.from_opf:
                     opf_file = find_metadata_opf(folder)
                     if opf_file:
                         # Read OPF to get title/author/source for searching
@@ -450,7 +452,7 @@ class BadaBoomBooksApp:
         from .utils.metadata_cleaning import generate_search_alternatives
 
         # Extract current book information for context
-        book_info = self._extract_book_info(folder, args.book_root)
+        book_info = self._extract_book_info(folder, args.book_root, args)
 
         # Generate search term(s) - parallel alternatives if no OPF
         if book_info.get('opf_exists'):
@@ -515,7 +517,7 @@ class BadaBoomBooksApp:
     def _manual_search_for_folder(self, folder: Path, args: ProcessingArgs) -> bool:
         """Perform manual search for a folder."""
         # Extract current book information for context
-        book_info = self._extract_book_info(folder, args.book_root)
+        book_info = self._extract_book_info(folder, args.book_root, args)
         
         site_key, url = self.manual_search.handle_manual_search_with_context(folder, book_info, args.site)
         
@@ -538,7 +540,7 @@ class BadaBoomBooksApp:
         self.config['urls'][b64_folder] = b64_url
         print(f"Queued OPF metadata for {folder.name}")
     
-    def _extract_book_info(self, folder: Path, book_root: Optional[Path] = None) -> dict:
+    def _extract_book_info(self, folder: Path, book_root: Optional[Path] = None, args: Optional[ProcessingArgs] = None) -> dict:
         """Extract current book information for context display.
 
         Returns multi-source metadata when no OPF exists, allowing parallel search strategies.
@@ -547,6 +549,7 @@ class BadaBoomBooksApp:
             folder: The audiobook folder to extract info from
             book_root: If provided (when using -R flag), will attempt to extract
                       author from parent directory when no author is found in metadata
+            args: Optional ProcessingArgs to check force_refresh/from_opf flags
 
         Returns:
             dict: If OPF exists, returns single-source trusted metadata.
@@ -561,16 +564,24 @@ class BadaBoomBooksApp:
         }
 
         try:
-            # Try to read existing OPF file first
+            # Check if we should read OPF file
+            # Skip OPF if force_refresh is set WITHOUT from_opf (user wants fresh search)
+            should_read_opf = True
+            if args and args.force_refresh and not args.from_opf:
+                should_read_opf = False
+                log.debug(f"Ignoring OPF for {folder.name} (force_refresh without from_opf)")
+
+            # Try to read existing OPF file first (if allowed)
             # OPF is trusted completely - if it exists, use it exclusively
-            opf_file = find_metadata_opf(folder)
-            if opf_file:
-                opf_info = self._extract_from_opf(opf_file)
-                book_info.update(opf_info)
-                book_info['source'] = 'existing OPF file'
-                book_info['opf_exists'] = True
-                # OPF data is trusted - return immediately
-                return book_info
+            if should_read_opf:
+                opf_file = find_metadata_opf(folder)
+                if opf_file:
+                    opf_info = self._extract_from_opf(opf_file)
+                    book_info.update(opf_info)
+                    book_info['source'] = 'existing OPF file'
+                    book_info['opf_exists'] = True
+                    # OPF data is trusted - return immediately
+                    return book_info
 
             # No OPF - extract from both ID3 and folder name as equal sources
             book_info['opf_exists'] = False

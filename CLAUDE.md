@@ -27,6 +27,16 @@ python BadaBoomBooks.py --dry-run --auto-search --series --opf "C:\Test Folder"
 # Force refresh - re-scrape metadata even if OPF exists
 python BadaBoomBooks.py --from-opf --opf --force-refresh "C:\Audiobook Folder"
 
+# Using -R flag with organized library (Author/Book structure)
+# CORRECT: Point -R to the parent directory containing author folders
+python BadaBoomBooks.py --auto-search --opf -R "T:\Library\Authors"
+# This discovers: T:\Library\Authors\Author Name\Book Title\
+
+# INCORRECT: Don't point -R to individual book folders
+# python BadaBoomBooks.py --auto-search --opf -R "T:\Library\Authors\Author Name\Book Title"
+# This won't extract author from parent - use direct folder argument instead:
+python BadaBoomBooks.py --auto-search --opf "T:\Library\Authors\Author Name\Book Title"
+
 # Run from modular source
 python src/main.py [arguments]
 ```
