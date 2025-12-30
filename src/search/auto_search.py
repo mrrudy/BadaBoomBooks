@@ -91,6 +91,30 @@ class AutoSearchEngine:
             chrome_options = get_chrome_options()
             driver = webdriver.Chrome(options=chrome_options)
 
+            # Execute stealth JavaScript to bypass WebDriver detection
+            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                'source': '''
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+
+                    // Override plugins to appear more realistic
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+
+                    // Override languages
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en']
+                    });
+
+                    // Chrome runtime should not be exposed
+                    window.chrome = {
+                        runtime: {}
+                    };
+                '''
+            })
+
             # If search_alternatives provided, search with ALL alternatives
             # This creates parallel search strategies: (ID3 data) OR (folder name)
             search_terms_to_try = []

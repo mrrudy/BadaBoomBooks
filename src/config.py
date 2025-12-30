@@ -146,39 +146,59 @@ def setup_logging(debug_enabled: bool = False):
 
 # === BROWSER CONFIGURATION ===
 def get_chrome_options():
-    """Get Chrome options for Selenium WebDriver."""
+    """Get Chrome options for Selenium WebDriver with stealth mode."""
     from selenium.webdriver.chrome.options import Options
-    
+
     chrome_options = Options()
+
+    # === STEALTH MODE: Anti-Bot Detection ===
+    # Exclude automation flags that expose WebDriver
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+
+    # Disable blink features that detect automation
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+
+    # === REALISTIC USER AGENT ===
+    # Use a recent, realistic Chrome user agent (update periodically)
+    chrome_options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
+
+    # === WINDOW AND DISPLAY ===
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--start-maximized")
+
+    # === LANGUAGE AND LOCALE ===
+    # Set language to match typical user
+    chrome_options.add_argument("--lang=en-US")
+    chrome_options.add_experimental_option('prefs', {
+        'intl.accept_languages': 'en-US,en;q=0.9',
+        'profile.default_content_setting_values.notifications': 2,  # Block notifications
+    })
+
+    # === PERFORMANCE AND STABILITY ===
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--enable-unsafe-swiftshader")
-    
-    # Add new flags to prevent GPU initialization
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-software-rasterizer")
+
+    # Disable unnecessary features
     chrome_options.add_argument("--disable-3d-apis")
     chrome_options.add_argument("--disable-accelerated-2d-canvas")
     chrome_options.add_argument("--disable-gl-drawing-for-tests")
-    
-    # Disable unnecessary services
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-software-rasterizer")
     chrome_options.add_argument("--disable-gpu-compositing")
     chrome_options.add_argument("--disable-cloud-import")
     chrome_options.add_argument("--disable-component-update")
     chrome_options.add_argument("--disable-background-networking")
     chrome_options.add_argument("--disable-client-side-phishing-detection")
-    
-    # Set log level to suppress warnings
+    chrome_options.add_argument("--disable-sync")
+    chrome_options.add_argument("--disable-extensions")
+
+    # === LOGGING ===
     chrome_options.add_argument("--log-level=3")
-    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
-    
-    # Add user agent to avoid bot detection
-    chrome_options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    )
-    
+
     return chrome_options
 
 # === ENVIRONMENT CONFIGURATION ===
