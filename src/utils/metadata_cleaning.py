@@ -176,6 +176,10 @@ def clean_id3_field(field_value: str) -> str:
         ''
         >>> clean_id3_field("Author Name")
         'Author Name'
+        >>> clean_id3_field("1. I")
+        ''
+        >>> clean_id3_field("2. A")
+        ''
     """
     if not field_value:
         return ""
@@ -194,7 +198,16 @@ def clean_id3_field(field_value: str) -> str:
     # Remove multiple spaces
     result = re.sub(r'\s+', ' ', result)
 
-    return result.strip()
+    result = result.strip()
+
+    # Additional validation: check if meaningful content remains
+    # after removing numbers and special characters
+    # This catches cases like "1. I" or "2. A" where the actual text is too short
+    alphanumeric_only = re.sub(r'[^a-zA-Z]', '', result)
+    if len(alphanumeric_only) < 3:
+        return ""
+
+    return result
 
 
 def extract_metadata_from_sources(
@@ -293,9 +306,85 @@ def extract_metadata_from_sources(
     return result
 
 
+def _normalize_for_comparison(text: str) -> str:
+    """
+    Normalize text for deduplication comparison.
+
+    Removes case, extra spaces, and common words to detect when one search
+    term is essentially contained in another.
+
+    Args:
+        text: Text to normalize
+
+    Returns:
+        Normalized text for comparison
+    """
+    import unicodedata
+
+    # Normalize Unicode characters (e.g., ś -> s)
+    result = unicodedata.normalize('NFKD', text)
+    result = result.encode('ascii', 'ignore').decode('ascii')
+
+    # Convert to lowercase
+    result = result.lower()
+    # Remove common filler words that don't add search value
+    filler_words = ['by', 'czyta', 'reads', 'narrated', 'audiobook', 'kbps', 'mp3']
+    for word in filler_words:
+        result = re.sub(rf'\b{word}\b', '', result)
+    # Remove all non-alphanumeric except spaces
+    result = re.sub(r'[^a-z0-9\s]', '', result)
+    # Collapse multiple spaces
+    result = re.sub(r'\s+', ' ', result)
+    return result.strip()
+
+
+def _is_redundant_search(term1: str, term2: str, threshold: float = 0.8) -> bool:
+    """
+    Check if two search terms are redundant (one contains most of the other's content).
+
+    Args:
+        term1: First search term
+        term2: Second search term
+        threshold: Similarity threshold (0.0-1.0) for considering terms redundant
+
+    Returns:
+        True if terms are redundant and one should be skipped
+
+    Examples:
+        >>> _is_redundant_search("Karin Slaughter", "Slaughter Karin - Moje sliczne czyta Filip Kosior")
+        True
+        >>> _is_redundant_search("Book Title", "Different Author")
+        False
+    """
+    norm1 = _normalize_for_comparison(term1)
+    norm2 = _normalize_for_comparison(term2)
+
+    if not norm1 or not norm2:
+        return False
+
+    # Split into word sets
+    words1 = set(norm1.split())
+    words2 = set(norm2.split())
+
+    if not words1 or not words2:
+        return False
+
+    # Calculate overlap - if one term's words are mostly in the other, it's redundant
+    smaller_set = words1 if len(words1) < len(words2) else words2
+    larger_set = words2 if len(words1) < len(words2) else words1
+
+    overlap = len(smaller_set & larger_set)
+    similarity = overlap / len(smaller_set) if len(smaller_set) > 0 else 0
+
+    return similarity >= threshold
+
+
 def generate_search_alternatives(metadata: Dict[str, Dict[str, str]]) -> List[Dict[str, str]]:
     """
     Generate search term alternatives from multiple metadata sources.
+
+    Deduplicates search terms when one source's information is already
+    contained in another to avoid redundant searches.
 
     Args:
         metadata: Dictionary from extract_metadata_from_sources()
@@ -331,12 +420,23 @@ def generate_search_alternatives(metadata: Dict[str, Dict[str, str]]) -> List[Di
     # Priority 2: Folder name (always include if valid)
     folder_data = metadata.get('folder', {})
     if folder_data.get('valid'):
-        alternatives.append({
+        folder_alternative = {
             'source': 'folder',
             'term': folder_data['cleaned'],
             'priority': 2 if alternatives else 1,  # Priority 1 if ID3 invalid
             'details': f"Folder: {folder_data['raw']}"
-        })
+        }
+
+        # Check if folder search would be redundant
+        is_redundant = False
+        if alternatives:
+            for existing in alternatives:
+                if _is_redundant_search(folder_alternative['term'], existing['term']):
+                    is_redundant = True
+                    break
+
+        if not is_redundant:
+            alternatives.append(folder_alternative)
 
     # Sort by priority
     alternatives.sort(key=lambda x: x['priority'])
