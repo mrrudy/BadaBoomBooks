@@ -13,9 +13,12 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 from ..config import get_chrome_options
-from ..config import SCRAPER_REGISTRY
+from ..config import SCRAPER_REGISTRY, DEFAULT_SEARCH_WAIT_TIMEOUT
 from ..models import SearchCandidate
 from ..utils import wait_with_backoff
 
@@ -148,9 +151,24 @@ class AutoSearchEngine:
             # Perform DuckDuckGo search
             query = f"site:{config['domain']} {search_term}"
             ddg_url = f"https://duckduckgo.com/?q={requests.utils.quote(query)}"
-            
+
             driver.get(ddg_url)
-            time.sleep(delay)
+
+            # Wait for search results to load with explicit wait condition
+            try:
+                wait = WebDriverWait(driver, DEFAULT_SEARCH_WAIT_TIMEOUT)
+                # Wait for article elements with data-testid="result" to be present
+                wait.until(EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, 'article[data-testid="result"]')
+                ))
+                # Additional short delay for any lazy-loaded content
+                time.sleep(0.5)
+                if self.debug_enabled:
+                    log.debug(f"Search results loaded successfully for: {search_term}")
+            except TimeoutException:
+                # Fallback to old behavior if new selector fails
+                log.warning(f"Timeout waiting for search results, using fallback delay for: {search_term}")
+                time.sleep(delay)
             
             # Extract search results
             results = self._extract_search_results(driver, site_key, search_term, search_limit)
@@ -202,41 +220,60 @@ class AutoSearchEngine:
                 snippets = driver.find_elements(By.CSS_SELECTOR, 'ol.react-results--main .result__snippet')
             
             log.debug(f"Found {len(elems)} result elements for {site_key}")
-            
+
+            # Enhanced debug logging for first result
+            if self.debug_enabled and elems:
+                first_elem = elems[0]
+                first_title = first_elem.text or first_elem.get_attribute('aria-label') or 'No title'
+                first_href = first_elem.get_attribute('href')
+                log.debug(f"First search result: '{first_title}' -> {first_href}")
+
             # Extract result data
             for i, elem in enumerate(elems[:search_limit]):
                 href = elem.get_attribute('href')
                 title = elem.text or elem.get_attribute('aria-label') or 'No title'
                 snippet = snippets[i].text if i < len(snippets) else ''
-                
+
                 # Skip invalid URLs
                 if href and not href.startswith('javascript:') and 'http' in href:
                     results.append({
                         'title': title,
-                        'href': href, 
+                        'href': href,
                         'body': snippet
                     })
-                    log.debug(f"Added result: {title} -> {href}")
+                    log.debug(f"Added result #{i+1}: {title} -> {href}")
             
             # Debug: Save search results page
             if self.debug_enabled:
                 self._save_debug_page(driver, f"search_{site_key}_{search_term}")
                 print(f"  Debug: Found {len(results)} valid results for {site_key}")
-            
+
+            # Validate results
+            if len(results) == 0:
+                log.warning(f"No search results found for '{search_term}' on {site_key}. "
+                          f"Page may not have loaded completely.")
+
         except Exception as e:
             log.error(f"Error extracting search results for {site_key}: {e}")
-        
+
         return results
     
     def _filter_results_by_pattern(self, results: List[dict], url_pattern: str, site_key: str) -> List[dict]:
         """Filter results by URL pattern matching."""
         filtered = []
-        
+        config = SCRAPER_REGISTRY.get(site_key, {})
+        expected_domain = config.get('domain', '')
+
         for result in results:
+            # Validate domain if available
+            if expected_domain and expected_domain not in result["href"]:
+                log.debug(f"Skipping result - domain mismatch. Expected '{expected_domain}', got: {result['href']}")
+                continue
+
             if re.search(url_pattern, result["href"]):
                 filtered.append(result)
                 log.debug(f"Matched URL pattern for {site_key}: {result['href']}")
-                
+
                 # Stop when we have enough matches
                 if len(filtered) >= 10:  # Reasonable limit
                     break

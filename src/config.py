@@ -190,3 +190,4 @@ def setup_environment():
 DEFAULT_SEARCH_LIMIT = 5
 DEFAULT_DOWNLOAD_LIMIT = 3
 DEFAULT_SEARCH_DELAY = 2.0
+DEFAULT_SEARCH_WAIT_TIMEOUT = 10  # Max seconds to wait for search results to load
