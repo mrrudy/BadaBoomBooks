@@ -17,7 +17,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-from ..config import get_chrome_options
+from ..config import get_chrome_options, initialize_chrome_driver
 from ..config import SCRAPER_REGISTRY, DEFAULT_SEARCH_WAIT_TIMEOUT
 from ..models import SearchCandidate
 from ..utils import wait_with_backoff
@@ -87,9 +87,16 @@ class AutoSearchEngine:
         driver = None
 
         try:
-            # Initialize Chrome driver
-            chrome_options = get_chrome_options()
-            driver = webdriver.Chrome(options=chrome_options)
+            # Initialize Chrome driver with smart profile selection
+            driver, profile_mode = initialize_chrome_driver()
+
+            # Inform user of profile mode
+            if profile_mode == 'real':
+                log.info("🌍 Using real Chrome profile (DuckDuckGo preferences preserved)")
+            elif profile_mode == 'copied':
+                log.info("🌍 Using copied Chrome profile (DuckDuckGo preferences preserved)")
+            else:
+                log.info("⚠️  Using temporary Chrome profile (could not access profile)")
 
             # Execute stealth JavaScript to bypass WebDriver detection
             driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {

@@ -201,6 +201,41 @@ The main processing flow in [src/main.py](src/main.py):
 - `debug.log` - Debug output when `--debug` flag is used
 - `.cursorrules` - Not present (no cursor-specific rules)
 
+### Chrome Profile Configuration
+
+The application can use your **real Chrome browser profile** to preserve DuckDuckGo region settings and other preferences for better search results.
+
+**Configuration (.env file):**
+```bash
+CHROME_USE_REAL_PROFILE=true   # Default: try real profile with smart fallback
+CHROME_PROFILE_PATH=           # Optional: override auto-detected path
+```
+
+**Smart Profile Selection Behavior:**
+1. **Chrome closed:** Uses real profile directly → DuckDuckGo region preferences preserved
+2. **Chrome open (profile locked):** Copies profile to temp directory (once/month max) → Uses copy with lock files removed → DuckDuckGo preferences still preserved
+3. **Copy fails:** Falls back to temporary ephemeral profile → May show different search results
+4. **Disabled:** Set `CHROME_USE_REAL_PROFILE=false` to always use temporary profile
+
+**Profile Copy Details:**
+- **Location:** System temp directory (`%TEMP%\badaboombooksprofile_chrome\` on Windows)
+- **Refresh frequency:** Maximum once per 30 days (reuses existing copy if younger)
+- **Lock files removed:** `SingletonLock`, `SingletonCookie`, `SingletonSocket`
+- **Cleanup:** Temp directory can be deleted on system restart (acceptable)
+
+**Security Implications:**
+Using real profile gives automation access to:
+- Cookies and logged-in sessions
+- Browsing history and bookmarks
+- ⚠️ Saved passwords (if Chrome extensions enabled)
+
+**Recommendation:** This feature is designed for **local use only** (not remote/cloud deployments).
+
+**Auto-detected Paths:**
+- Windows: `%LOCALAPPDATA%\Google\Chrome\User Data`
+- macOS: `~/Library/Application Support/Google/Chrome`
+- Linux: `~/.config/google-chrome`
+
 ## Important Notes
 
 ### File Operations

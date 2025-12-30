@@ -145,11 +145,36 @@ def setup_logging(debug_enabled: bool = False):
         log.disable(log.CRITICAL)
 
 # === BROWSER CONFIGURATION ===
-def get_chrome_options():
-    """Get Chrome options for Selenium WebDriver with stealth mode."""
+def get_chrome_options(use_profile=False, user_data_dir=None):
+    """
+    Get Chrome options for Selenium WebDriver with stealth mode.
+
+    Args:
+        use_profile: If True, configure to use user's real Chrome profile
+        user_data_dir: Path to Chrome user data directory (auto-detected if None)
+
+    Returns:
+        Chrome Options object
+    """
     from selenium.webdriver.chrome.options import Options
 
     chrome_options = Options()
+
+    # === USER PROFILE CONFIGURATION ===
+    if use_profile:
+        if user_data_dir is None:
+            user_data_dir = get_chrome_profile_path()
+
+        if user_data_dir:
+            chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+            # Prevent Chrome from restoring previous session windows
+            chrome_options.add_argument("--no-first-run")
+            chrome_options.add_argument("--no-default-browser-check")
+            chrome_options.add_argument("--disable-session-crashed-bubble")
+            chrome_options.add_argument("--disable-infobars")
+            log.debug(f"Configured Chrome to use profile: {user_data_dir}")
+        else:
+            log.warning("Profile requested but path not found, using ephemeral profile")
 
     # === STEALTH MODE: Anti-Bot Detection ===
     # Exclude automation flags that expose WebDriver
@@ -173,10 +198,19 @@ def get_chrome_options():
     # === LANGUAGE AND LOCALE ===
     # Set language to match typical user
     chrome_options.add_argument("--lang=en-US")
-    chrome_options.add_experimental_option('prefs', {
+
+    # Build prefs dictionary
+    prefs = {
         'intl.accept_languages': 'en-US,en;q=0.9',
         'profile.default_content_setting_values.notifications': 2,  # Block notifications
-    })
+    }
+
+    # When using profile, prevent session restore to avoid opening extra windows
+    if use_profile:
+        prefs['session.restore_on_startup'] = 4  # 4 = Open New Tab Page (don't restore session)
+        prefs['browser.startup.page'] = 0  # 0 = blank page
+
+    chrome_options.add_experimental_option('prefs', prefs)
 
     # === PERFORMANCE AND STABILITY ===
     chrome_options.add_argument("--disable-gpu")
@@ -200,6 +234,231 @@ def get_chrome_options():
     chrome_options.add_argument("--log-level=3")
 
     return chrome_options
+
+def get_chrome_profile_path():
+    """
+    Auto-detect Chrome profile path for current OS.
+    Returns None if profile doesn't exist.
+    """
+    import platform
+    from pathlib import Path
+
+    # Check for environment variable override
+    env_path = os.getenv('CHROME_PROFILE_PATH')
+    if env_path:
+        path = Path(env_path)
+        if path.exists():
+            return str(path)
+        else:
+            log.warning(f"CHROME_PROFILE_PATH set but doesn't exist: {env_path}")
+            return None
+
+    # Auto-detect based on OS
+    system = platform.system()
+
+    if system == 'Windows':
+        path = Path(os.getenv('LOCALAPPDATA')) / 'Google' / 'Chrome' / 'User Data'
+    elif system == 'Darwin':  # macOS
+        path = Path.home() / 'Library' / 'Application Support' / 'Google' / 'Chrome'
+    elif system == 'Linux':
+        path = Path.home() / '.config' / 'google-chrome'
+    else:
+        log.debug(f"Unknown OS: {system}, cannot auto-detect Chrome profile")
+        return None
+
+    if path.exists():
+        log.debug(f"Chrome profile detected at: {path}")
+        return str(path)
+    else:
+        log.debug(f"Chrome profile not found at: {path}")
+        return None
+
+def copy_chrome_profile_to_temp(source_profile_path):
+    """
+    Copy Chrome profile to temp directory for use when real profile is locked.
+    Only copies if existing copy is older than 30 days.
+    Removes lock files from the copy.
+
+    Args:
+        source_profile_path: Path to real Chrome profile
+
+    Returns:
+        str: Path to copied profile, or None if copy failed
+    """
+    import tempfile
+    import shutil
+    from pathlib import Path
+    import time
+
+    try:
+        # Define temp profile path
+        temp_dir = Path(tempfile.gettempdir()) / 'badaboombooksprofile_chrome'
+
+        # Check if we need to refresh the copy (older than 30 days)
+        needs_copy = True
+        if temp_dir.exists():
+            # Check age of temp profile
+            profile_age_days = (time.time() - temp_dir.stat().st_mtime) / (60 * 60 * 24)
+            if profile_age_days < 30:
+                log.debug(f"Using existing temp profile (age: {profile_age_days:.1f} days)")
+                needs_copy = False
+            else:
+                log.debug(f"Temp profile is {profile_age_days:.1f} days old, refreshing...")
+                # Remove old copy
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+        # Copy profile if needed
+        if needs_copy:
+            log.debug(f"Copying Chrome profile to temp: {temp_dir}")
+            shutil.copytree(source_profile_path, temp_dir, dirs_exist_ok=True)
+            log.debug("Profile copy completed")
+
+        # Remove lock files from the copy
+        lock_files = ['SingletonLock', 'SingletonCookie', 'SingletonSocket']
+        for lock_file in lock_files:
+            lock_path = temp_dir / lock_file
+            if lock_path.exists():
+                lock_path.unlink()
+                log.debug(f"Removed lock file: {lock_file}")
+
+        return str(temp_dir)
+
+    except Exception as e:
+        log.debug(f"Failed to copy profile to temp: {e}")
+        return None
+
+def is_chrome_running():
+    """
+    Check if Chrome browser is currently running.
+
+    Returns:
+        bool: True if Chrome is running, False otherwise
+    """
+    try:
+        import psutil
+
+        # Check for chrome.exe process (Windows) or chrome/chromium (Linux/Mac)
+        chrome_names = ['chrome.exe', 'chrome', 'chromium', 'chromium-browser', 'Google Chrome']
+
+        for proc in psutil.process_iter(['name']):
+            try:
+                proc_name = proc.info['name']
+                if proc_name and any(chrome_name.lower() in proc_name.lower() for chrome_name in chrome_names):
+                    log.debug(f"Detected running Chrome process: {proc_name}")
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+        return False
+
+    except ImportError:
+        # psutil not available, assume Chrome might be running (safer to use copied profile)
+        log.debug("psutil not available, cannot detect Chrome - assuming it might be running")
+        return True
+    except Exception as e:
+        log.debug(f"Error checking if Chrome is running: {e}")
+        return True  # Assume running on error (safer)
+
+def initialize_chrome_driver():
+    """
+    Initialize Chrome WebDriver with smart profile selection.
+
+    Strategy:
+    1. Check if Chrome is running (profile would be locked)
+    2. If not running, try real profile directly
+    3. If running, copy profile to temp and use copy
+    4. If copy fails, fall back to ephemeral profile
+
+    Returns:
+        tuple: (driver, profile_mode) where profile_mode is 'real', 'copied', or 'ephemeral'
+    """
+    from selenium import webdriver
+
+    use_real_profile = os.getenv('CHROME_USE_REAL_PROFILE', 'true').lower() == 'true'
+
+    if not use_real_profile:
+        # User explicitly disabled real profile
+        chrome_options = get_chrome_options(use_profile=False)
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver, 'ephemeral'
+
+    # Get real profile path
+    profile_path = get_chrome_profile_path()
+    if not profile_path:
+        # Profile not found, use ephemeral
+        log.debug("Chrome profile not found, using ephemeral profile")
+        chrome_options = get_chrome_options(use_profile=False)
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver, 'ephemeral'
+
+    # Check if Chrome is running (profile would be locked)
+    chrome_running = is_chrome_running()
+
+    if chrome_running:
+        # Chrome is running, profile is locked - use copied profile
+        log.debug("Chrome is running, will use copied profile to avoid conflicts")
+        copied_profile_path = copy_chrome_profile_to_temp(profile_path)
+
+        if copied_profile_path:
+            try:
+                # Try using the copied profile
+                chrome_options = get_chrome_options(use_profile=True, user_data_dir=copied_profile_path)
+                driver = webdriver.Chrome(options=chrome_options)
+                log.debug("Successfully initialized Chrome with copied profile")
+                return driver, 'copied'
+
+            except Exception as copy_error:
+                # Even copied profile failed - fall back to ephemeral
+                log.debug(f"Failed to use copied profile: {copy_error}")
+                log.debug("Falling back to ephemeral profile")
+                chrome_options = get_chrome_options(use_profile=False)
+                driver = webdriver.Chrome(options=chrome_options)
+                return driver, 'ephemeral'
+
+        else:
+            # Profile copy failed - fall back to ephemeral
+            log.debug("Profile copy failed, falling back to ephemeral profile")
+            chrome_options = get_chrome_options(use_profile=False)
+            driver = webdriver.Chrome(options=chrome_options)
+            return driver, 'ephemeral'
+
+    else:
+        # Chrome not running, can use real profile directly
+        try:
+            chrome_options = get_chrome_options(use_profile=True, user_data_dir=profile_path)
+            driver = webdriver.Chrome(options=chrome_options)
+            log.debug("Successfully initialized Chrome with real profile")
+            return driver, 'real'
+
+        except Exception as e:
+            # Real profile failed (unexpected) - try copying as fallback
+            log.debug(f"Failed to use real profile despite Chrome not running: {e}")
+            log.debug("Attempting to copy profile to temp directory...")
+
+            copied_profile_path = copy_chrome_profile_to_temp(profile_path)
+
+            if copied_profile_path:
+                try:
+                    # Try using the copied profile
+                    chrome_options = get_chrome_options(use_profile=True, user_data_dir=copied_profile_path)
+                    driver = webdriver.Chrome(options=chrome_options)
+                    log.debug("Successfully initialized Chrome with copied profile")
+                    return driver, 'copied'
+
+                except Exception as copy_error:
+                    # Even copied profile failed - fall back to ephemeral
+                    log.debug(f"Failed to use copied profile: {copy_error}")
+                    log.debug("Falling back to ephemeral profile")
+                    chrome_options = get_chrome_options(use_profile=False)
+                    driver = webdriver.Chrome(options=chrome_options)
+                    return driver, 'ephemeral'
+
+            else:
+                # Profile copy failed - fall back to ephemeral
+                log.debug("Profile copy failed, falling back to ephemeral profile")
+                chrome_options = get_chrome_options(use_profile=False)
+                driver = webdriver.Chrome(options=chrome_options)
+                return driver, 'ephemeral'
 
 # === ENVIRONMENT CONFIGURATION ===
 def setup_environment():
