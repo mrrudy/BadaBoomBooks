@@ -154,20 +154,22 @@ class FileProcessor:
         """Move audiobook folder to new location."""
         source = Path(metadata.input_folder)
         target = metadata.final_output
-        
+
         if self.dry_run:
             size = get_folder_size(source)
             print(f"[DRY-RUN] Would move '{source}' to '{target}' ({format_file_size(size)})")
             return True
-        
+
         try:
             print(f"Moving {source.name}...")
             log.info(f"Moving folder: {source} -> {target}")
-            
+
             # Try direct rename first (faster if on same filesystem)
             try:
                 source.rename(target)
                 log.info(f"Successfully moved folder using rename: {target}")
+                # Update metadata.input_folder to new location after successful move
+                metadata.input_folder = str(target)
                 return True
             except OSError:
                 # Cross-filesystem move - use copy then delete
@@ -175,8 +177,10 @@ class FileProcessor:
                 shutil.copytree(source, target, dirs_exist_ok=True, copy_function=shutil.copy2)
                 shutil.rmtree(source)
                 log.info(f"Successfully moved folder using copy-delete: {target}")
+                # Update metadata.input_folder to new location after successful move
+                metadata.input_folder = str(target)
                 return True
-                
+
         except Exception as e:
             log.error(f"Error moving folder {source} to {target}: {e}")
             metadata.mark_as_failed(f"Move error: {e}")
