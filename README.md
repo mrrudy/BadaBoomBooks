@@ -108,9 +108,31 @@ See [`MODULAR_ARCHITECTURE.md`](MODULAR_ARCHITECTURE.md) for detailed documentat
   - **Custom URL support**: Enter a URL directly during selection instead of choosing numbered options
   - Accepts both full URLs (`https://lubimyczytac.pl/ksiazka/...`) and partial URLs (`lubimyczytac.pl/ksiazka/...`)
   - Validates URL against supported sites before proceeding
+- `--llm-select` - AI-powered candidate scoring (requires LLM API key)
+- `--yolo` - Auto-accept all prompts for fully automated processing
 - `--search-limit` - Results per site (default: 5)
 - `--download-limit` - Pages to download per site (default: 3)
 - `--search-delay` - Delay between requests (default: 2.0s)
+
+#### Automated Decision-Making
+
+| --auto-search | --llm-select | --yolo | Behavior | User Input? | Threshold | Value | Fallback |
+|:---:|:---:|:---:|---|:---:|---|:---:|---|
+| ❌ | - | - | Manual search (open browser, copy URL) | ✅ | - | - | - |
+| ✅ | ❌ | ❌ | Auto-search, manual selection | ✅ | - | - | - |
+| ✅ | ❌ | ✅ | ⚠️ **DISCOURAGED:** Blind auto-select (no validation) | ❌ | - | - | Auto-select first |
+| ✅ | ✅ | ❌ | LLM-assisted selection (scores + default) | ✅ | Raw LLM | 0.5 | Show skip default |
+| ✅ | ✅ | ✅ | Two-tier auto-selection | ❌ | Final weighted | 0.95 | Skip if < 0.95 |
+
+**Score types:**
+- **Raw LLM:** AI confidence score (0.0-1.0)
+- **Final weighted:** LLM score + site preference boost (LubimyCzytac: 3.0, Audible: 2.0, Goodreads: 1.5)
+
+**Thresholds (configurable in [src/config.py](src/config.py)):**
+- `0.5` - Minimum raw LLM score for manual mode default selection
+- `0.95` - Minimum final weighted score for YOLO auto-accept
+- `0.65` - Minimum raw LLM score to apply site weights
+- `0.1` - Similarity bracket for weight tiebreaker
 
 #### Debug Options
 - `-d, --debug` - Enable debug logging
