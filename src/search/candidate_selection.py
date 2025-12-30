@@ -41,9 +41,6 @@ class CandidateSelector:
         if not candidates:
             return None
 
-        if len(candidates) == 1:
-            return candidates[0]
-
         # Reset rejection flag
         self.llm_rejected_all = False
 
