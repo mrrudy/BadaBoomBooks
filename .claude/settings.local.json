@@ -43,7 +43,11 @@
       "Bash(tee:*)",
       "Bash(python test_llm_prompt.py:*)",
       "Bash(1)",
-      "Bash(ls \"c:\\\\Users\\\\rudy\\\\Documents\\\\bin\\\\audiobook\\\\BadaBoomBooks\\\\src\\\\tests\"\" | grep \"test_ \")"
+      "Bash(ls \"c:\\\\Users\\\\rudy\\\\Documents\\\\bin\\\\audiobook\\\\BadaBoomBooks\\\\src\\\\tests\"\" | grep \"test_ \")",
+      "Bash(pip install:*)",
+      "Bash(python -m venv:*)",
+      "Bash(venv_test/Scripts/python.exe -m pip install:*)",
+      "Bash(venv_test/Scripts/python.exe -m pytest src/tests -v)"
     ]
   }
 }
