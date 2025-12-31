@@ -159,3 +159,5 @@ badaboombooksqueue.db*
 legacy.old/*
 node_modules/*
 debug_output.txt
+web.old/*
+

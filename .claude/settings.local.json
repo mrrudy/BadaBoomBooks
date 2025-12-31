@@ -42,7 +42,8 @@
       "Bash(Select-String -Pattern \"LLM|prompt|candidate|score\" -Context 2,2)",
       "Bash(tee:*)",
       "Bash(python test_llm_prompt.py:*)",
-      "Bash(1)"
+      "Bash(1)",
+      "Bash(ls \"c:\\\\Users\\\\rudy\\\\Documents\\\\bin\\\\audiobook\\\\BadaBoomBooks\\\\src\\\\tests\"\" | grep \"test_ \")"
     ]
   }
 }
