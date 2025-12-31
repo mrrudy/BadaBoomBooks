@@ -2,21 +2,21 @@
 # Requirements
 
 # Flask
-Flask==3.0.0
-Werkzeug==3.0.1
+Flask>=3.0.0
+Werkzeug>=3.0.1
 
 # Reuse existing BadaBoomBooks dependencies
 # (These should already be installed from main app)
-requests==2.31.0
-selenium==4.15.2
-beautifulsoup4==4.12.2
-lxml==4.9.3
-mutagen==1.47.0
-litellm==1.17.0
-python-dotenv==1.0.0
+requests>=2.31.0
+selenium>=4.15.2
+beautifulsoup4>=4.12.2
+lxml>=4.9.3
+mutagen>=1.47.0
+litellm>=1.17.0
+python-dotenv>=1.0.0
 
 # Database (already included in Python stdlib)
 # sqlite3
 
 # Huey task queue (for parallel processing)
-huey==2.4.5
+huey>=2.4.5
